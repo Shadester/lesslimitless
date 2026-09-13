@@ -3,17 +3,17 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")" && pwd)"
 CONFIGURATION="${CONFIGURATION:-debug}"
-APP_NAME="Local Pendant"
+APP_NAME="Less Limitless"
 BUNDLE="$ROOT/.build/app/$APP_NAME.app"
 CONTENTS="$BUNDLE/Contents"
 
 cd "$ROOT"
-swift build --configuration "$CONFIGURATION" --product LocalPendantApp
+swift build --configuration "$CONFIGURATION" --product LessLimitlessApp
 BIN_DIR="$(swift build --configuration "$CONFIGURATION" --show-bin-path)"
 
 rm -rf "$BUNDLE"
 mkdir -p "$CONTENTS/MacOS" "$CONTENTS/Resources"
-cp "$BIN_DIR/LocalPendantApp" "$CONTENTS/MacOS/LocalPendantApp"
+cp "$BIN_DIR/LessLimitlessApp" "$CONTENTS/MacOS/LessLimitlessApp"
 cp "$ROOT/Resources/Info.plist" "$CONTENTS/Info.plist"
 printf 'APPL????' > "$CONTENTS/PkgInfo"
 

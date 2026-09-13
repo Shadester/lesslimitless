@@ -2,7 +2,7 @@ import PendantKit
 import SwiftUI
 
 @main
-struct LocalPendantApp: App {
+struct LessLimitlessApp: App {
     @StateObject private var pendantClient = PendantClient()
     var body: some Scene {
         WindowGroup {

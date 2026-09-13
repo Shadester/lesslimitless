@@ -26,16 +26,16 @@ var targets: [Target] = [
 ]
 
 #if !os(Linux)
-products.append(.executable(name: "LocalPendantApp", targets: ["LocalPendantApp"]))
+products.append(.executable(name: "LessLimitlessApp", targets: ["LessLimitlessApp"]))
 targets.append(.executableTarget(
-    name: "LocalPendantApp",
+    name: "LessLimitlessApp",
     dependencies: ["Domain", "PendantKit"],
-    path: "Sources/LocalPendantApp"
+    path: "Sources/LessLimitlessApp"
 ))
 #endif
 
 let package = Package(
-    name: "LocalPendant",
+    name: "LessLimitless",
     platforms: [.macOS(.v14)],
     products: products,
     dependencies: [.package(url: "https://github.com/apple/swift-crypto.git", from: "3.0.0")],

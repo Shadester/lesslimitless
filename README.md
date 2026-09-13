@@ -1,4 +1,4 @@
-# Local Pendant
+# Less Limitless
 
 A native macOS 14+ foundation for a private, local-first pendant and meeting-audio library. It communicates directly with the pendant over Bluetooth Low Energy and contains no Limitless API integration.
 
@@ -47,10 +47,10 @@ swift test -c release
 
 ```sh
 # Debug executable
-swift build -c debug --product LocalPendantApp
+swift build -c debug --product LessLimitlessApp
 
 # Optimized release executable
-swift build -c release --product LocalPendantApp
+swift build -c release --product LessLimitlessApp
 
 # Print the directory containing the selected build output
 swift build -c release --show-bin-path
@@ -68,7 +68,7 @@ swift build -c release --show-bin-path
 CONFIGURATION=release ./build-app.sh
 
 # Launch the resulting app
-open ".build/app/Local Pendant.app"
+open ".build/app/Less Limitless.app"
 ```
 
 The bundling script copies `Resources/Info.plist`, including the Bluetooth, microphone, and screen-capture purpose strings, and ad-hoc signs the local bundle when `codesign` is available.

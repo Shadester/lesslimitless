@@ -10,7 +10,7 @@ struct AppShellView: View {
                 Label(destination.title, systemImage: destination.symbol)
                     .tag(destination)
             }
-            .navigationTitle("Local Pendant")
+            .navigationTitle("Less Limitless")
             .safeAreaInset(edge: .bottom) {
                 Label("Local only · Preview", systemImage: "lock.fill")
                     .font(.caption)

@@ -40,7 +40,7 @@ public final class PendantClient: NSObject, ObservableObject {
 
     public var onPayload: ((Data) -> Void)?
 
-    private static let rememberedPeripheralKey = "LocalPendant.rememberedPeripheral"
+    private static let rememberedPeripheralKey = "LessLimitless.rememberedPeripheral"
     private let defaults: UserDefaults
     private var reassembler = FragmentReassembler()
     private var central: CBCentralManager?
@@ -138,7 +138,7 @@ public final class PendantClient: NSObject, ObservableObject {
                 create: true
             )
             let root = appSupport
-                .appendingPathComponent("LocalPendant", isDirectory: true)
+                .appendingPathComponent("LessLimitless", isDirectory: true)
                 .appendingPathComponent("RawPageVault", isDirectory: true)
             let ingestor = try PendantPageIngestor(rootURL: root)
             pageIngestor = ingestor

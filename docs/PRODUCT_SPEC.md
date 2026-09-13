@@ -1,4 +1,4 @@
-# Local Pendant for macOS — Product & Architecture Specification
+# Less Limitless for macOS — Product & Architecture Specification
 
 **Status:** Draft v0.1  
 **Target:** macOS 14+  
@@ -127,7 +127,7 @@ Use an Xcode project for shipping, signing, sandbox settings, tests, and resourc
 ### 6.2 Module boundaries
 
 ```text
-LocalPendantApp
+LessLimitlessApp
 ├── AppShell             SwiftUI navigation, commands, menu bar
 ├── Domain               Recording, Transcript, Encounter, Job models
 ├── PendantKit
