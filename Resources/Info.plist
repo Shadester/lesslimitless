@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "https://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleDevelopmentRegion</key>
+    <string>en</string>
+    <key>CFBundleExecutable</key>
+    <string>LocalPendantApp</string>
+    <key>CFBundleIdentifier</key>
+    <string>app.localpendant.mac</string>
+    <key>CFBundleInfoDictionaryVersion</key>
+    <string>6.0</string>
+    <key>CFBundleName</key>
+    <string>Local Pendant</string>
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+    <key>CFBundleShortVersionString</key>
+    <string>0.1.0</string>
+    <key>CFBundleVersion</key>
+    <string>1</string>
+    <key>LSMinimumSystemVersion</key>
+    <string>14.0</string>
+    <key>NSBluetoothAlwaysUsageDescription</key>
+    <string>Local Pendant uses Bluetooth to connect directly to your pendant and copy recordings to this Mac.</string>
+    <key>NSMicrophoneUsageDescription</key>
+    <string>Local Pendant will use the microphone only when you explicitly start a Mac recording with microphone capture enabled.</string>
+    <key>NSScreenCaptureUsageDescription</key>
+    <string>Local Pendant will use Screen Recording permission only when you explicitly capture audio from a Mac application.</string>
+    <key>NSHighResolutionCapable</key>
+    <true/>
+</dict>
+</plist>
