@@ -27,6 +27,7 @@ Parsed summaries can be assembled with the pure, dependency-free `PendantSession
 - Xcode 15 or newer, including Command Line Tools
 - Swift 5.9 or newer (`swift --version`)
 - Internet access on the first build to resolve [swift-crypto](https://github.com/apple/swift-crypto)
+- libopus development files (`brew install opus` on macOS; `sudo dnf install opus-devel` on Fedora; `libopus-dev` on Debian/Ubuntu)
 
 The Swift package resolves its dependencies automatically. Resolve them explicitly when preparing an offline build:
 
@@ -78,4 +79,6 @@ This is a local development package only. App Sandbox configuration, Developer I
 
 ## Current limitations
 
-Mac audio capture, durable recording storage, Opus decoding, local transcription, full-text search, and optional LLM providers are not implemented yet. Do not erase the pendant after a diagnostic page transfer. See `docs/PRODUCT_SPEC.md` for the architecture, safety requirements, and delivery phases.
+Raw Opus decoding is local-only and uses the system libopus library. It accepts a packet-aligned `[Data]` sequence of 16 kHz mono Opus packets, bounds packet/input/output sizes, and can encode decoded Float PCM as atomic PCM16 WAV files. Arbitrary concatenated raw bytes are deliberately rejected because the format has no safe packet delimiter. It does not invoke ffmpeg or any network service.
+
+Mac audio capture, durable recording storage, local transcription, full-text search, and optional LLM providers are not implemented yet. Do not erase the pendant after a diagnostic page transfer. See `docs/PRODUCT_SPEC.md` for the architecture, safety requirements, and delivery phases.

@@ -14,15 +14,16 @@ var products: [Product] = [
 ]
 
 var targets: [Target] = [
+    .systemLibrary(name: "COpus", pkgConfig: "opus", providers: [.apt(["libopus-dev"]), .brew(["opus"])]),
     .target(name: "Domain", path: "Sources/Domain"),
     .target(
         name: "PendantKit",
-        dependencies: ["Domain", .product(name: "Crypto", package: "swift-crypto")],
+        dependencies: ["Domain", "COpus", .product(name: "Crypto", package: "swift-crypto")],
         path: "Sources/PendantKit",
         exclude: pendantKitExcludes
     ),
     .testTarget(name: "DomainTests", dependencies: ["Domain"], path: "Tests/DomainTests"),
-    .testTarget(name: "PendantKitTests", dependencies: ["PendantKit", "Domain"], path: "Tests/PendantKitTests")
+    .testTarget(name: "PendantKitTests", dependencies: ["PendantKit", "Domain", "COpus"], path: "Tests/PendantKitTests")
 ]
 
 #if !os(Linux)
