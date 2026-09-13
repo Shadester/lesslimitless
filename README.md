@@ -13,6 +13,7 @@ A native macOS 14+ foundation for a private, local-first pendant and meeting-aud
 - A caller-rooted raw page vault with SHA-256, atomic Codable-ledger persistence, collision detection, and recovery-safe reloads.
 - Cleanup eligibility requires persisted raw-page and audio hashes; no ACK or pendant deletion API is provided.
 - Caller-rooted raw Opus archives atomically persist assembled `.opus.raw` streams with Codable SHA-256/byte-count manifests; identical writes are idempotent and mismatches collide without decode, ACK, or deletion.
+- A durable vault-to-session pipeline reloads unverified raw pages, rechecks their SHA-256 hashes, reports failed/corrupt pages, assembles eligible Opus sessions, and writes deterministic SHA-256-derived archive IDs under a caller-supplied root without ACK or deletion.
 - Golden wire fixtures and adversarial protocol tests.
 
 Stored page payloads can be parsed into bounded diagnostic summaries and raw audio payloads. Raw page vaults preserve received payloads without decoding, acknowledging, or deleting them; the app deliberately exposes no page deletion, storage clear, reset, Wi-Fi, backend, or key-injection commands.
