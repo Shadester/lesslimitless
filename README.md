@@ -72,12 +72,27 @@ swift build -c release --product LessLimitlessApp
 Create a local development app bundle:
 
 ```sh
-./build-app.sh
-CONFIGURATION=release ./build-app.sh
-open ".build/app/Less Limitless.app"
+./scripts/build-macos.sh --debug
+open "dist/Less Limitless.app"
 ```
 
-The bundle script copies `Resources/Info.plist` and ad-hoc signs the app when `codesign` is available. It is not a notarized release package.
+Create a signed release DMG:
+
+```sh
+./scripts/build-macos.sh \
+  --identity "Developer ID Application: Your Name (TEAMID)" \
+  --version 0.1.0 --build 1 --dmg --test
+```
+
+To notarize, first create an `xcrun notarytool` Keychain profile on the Mac, then run:
+
+```sh
+./scripts/build-macos.sh \
+  --identity "Developer ID Application: Your Name (TEAMID)" \
+  --notary-profile lesslimitless-notary --notarize --dmg
+```
+
+The script embeds Homebrew's `libopus`, rewrites its load path to the app bundle, signs nested code before the app, verifies the signature, and staples notarized output. It never stores Apple credentials in the repository.
 
 ## Architecture
 
