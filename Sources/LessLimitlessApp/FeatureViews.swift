@@ -102,44 +102,92 @@ private struct StatusBadge: View {
 }
 
 struct RecordView: View {
-    @State private var includeMicrophone = true
-    @State private var source = "Choose an application…"
+    @StateObject private var capture = MacAudioCaptureService()
+    @State private var selectedApplication: MacAudioCaptureApplication?
+    @State private var captureSystemAudio = true
+    @State private var includeMicrophone = false
 
     var body: some View {
         ScrollView {
             VStack(spacing: 24) {
-                FeatureHeader(symbol: "record.circle", title: "Record on this Mac", subtitle: "Capture setup preview — no audio is being recorded.")
+                FeatureHeader(
+                    symbol: capture.state == .recording ? "record.circle.fill" : "record.circle",
+                    title: capture.state == .recording ? "Recording on this Mac" : "Record on this Mac",
+                    subtitle: capture.errorMessage ?? statusText
+                )
                 GroupBox("Capture source") {
                     VStack(alignment: .leading, spacing: 14) {
-                        Picker("Application", selection: $source) {
-                            Text("Choose an application…").tag("Choose an application…")
+                        Picker("Source", selection: $captureSystemAudio) {
+                            Text("System audio").tag(true)
+                            Text("One application").tag(false)
+                        }.pickerStyle(.segmented)
+                        if !captureSystemAudio {
+                            Picker("Application", selection: $selectedApplication) {
+                                Text("Choose an application…").tag(MacAudioCaptureApplication?.none)
+                                ForEach(capture.eligibleApplications) { application in
+                                    Text(application.name).tag(MacAudioCaptureApplication?.some(application))
+                                }
+                            }
                         }
                         Toggle("Include microphone", isOn: $includeMicrophone)
                         Divider()
-                        HStack {
-                            Label("System audio", systemImage: "speaker.wave.2")
-                            Spacer()
-                            Text("Not configured").foregroundStyle(.secondary)
-                        }
-                        HStack {
-                            Label("Microphone", systemImage: "mic")
-                            Spacer()
-                            Text("Permission not requested").foregroundStyle(.secondary)
-                        }
+                        LevelRow(label: "System audio", value: capture.systemAudioLevel)
+                        if includeMicrophone { LevelRow(label: "Microphone", value: capture.microphoneLevel) }
                     }.padding(8)
                 }
-                Button("Start Recording", systemImage: "record.circle.fill") {}
-                    .buttonStyle(.borderedProminent)
-                    .controlSize(.large)
-                    .tint(.red)
-                    .disabled(true)
-                Text("Capture controls will become available when the local capture service is implemented.")
-                    .font(.caption).foregroundStyle(.secondary)
+                HStack {
+                    if capture.state == .recording {
+                        Button("Stop Recording", systemImage: "stop.circle.fill") { Task { await capture.stop() } }
+                            .buttonStyle(.borderedProminent).tint(.red).controlSize(.large)
+                    } else {
+                        Button("Start Recording", systemImage: "record.circle.fill") { startCapture() }
+                            .buttonStyle(.borderedProminent).tint(.red).controlSize(.large)
+                            .disabled(!captureSystemAudio && selectedApplication == nil)
+                        Button("Refresh Applications") { Task { await capture.refreshEligibleApplications() } }
+                    }
+                }
+                Text("Audio is written locally in recoverable CAF segments with a manifest. Capture requires Screen Recording permission; microphone permission is requested only when enabled.")
+                    .font(.caption).foregroundStyle(.secondary).multilineTextAlignment(.center)
             }
             .frame(maxWidth: 620)
             .padding(36)
         }
         .navigationTitle("Record")
+        .task { await capture.refreshEligibleApplications() }
+    }
+
+    private var statusText: String {
+        switch capture.state {
+        case .idle: "Preparing capture"
+        case .requestingPermission: "Requesting permission"
+        case .ready: "Ready to record locally"
+        case .recording: "Recording locally"
+        case .stopped: "Recording saved locally"
+        case .failed: "Capture needs attention"
+        }
+    }
+
+    private func startCapture() {
+        let source: MacAudioCaptureSource = captureSystemAudio
+            ? .systemAudio
+            : .application(selectedApplication!)
+        let request = MacAudioCaptureRequest(source: source, includeMicrophone: includeMicrophone)
+        let root = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("LessLimitless", isDirectory: true)
+            .appendingPathComponent("MacCapture", isDirectory: true)
+        Task { await capture.start(request: request, under: root) }
+    }
+}
+
+private struct LevelRow: View {
+    let label: String
+    let value: Float
+    var body: some View {
+        HStack {
+            Text(label).frame(width: 100, alignment: .leading)
+            ProgressView(value: Double(value)).tint(.accentColor)
+            Text("\(Int(value * 100))%").font(.caption.monospacedDigit()).foregroundStyle(.secondary)
+        }
     }
 }
 

@@ -25,7 +25,7 @@
     <key>NSMicrophoneUsageDescription</key>
     <string>Less Limitless will use the microphone only when you explicitly start a Mac recording with microphone capture enabled.</string>
     <key>NSScreenCaptureUsageDescription</key>
-    <string>Less Limitless will use Screen Recording permission only when you explicitly capture audio from a Mac application.</string>
+    <string>Less Limitless uses Screen Recording permission only when you explicitly capture local system or application audio.</string>
     <key>NSHighResolutionCapable</key>
     <true/>
 </dict>
