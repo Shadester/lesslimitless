@@ -96,9 +96,9 @@ The script embeds Homebrew's `libopus`, rewrites its load path to the app bundle
 
 ## GitHub Actions releases
 
-`CI` runs on pushes and pull requests to `main`. Pushing a tag such as `v0.1.0` triggers the release workflow, which signs, notarizes, staples, and attaches a DMG to a GitHub Release.
+`CI` runs on pushes and pull requests to `main`. Run **Release macOS app** manually from GitHub Actions after selecting a release tag/ref; it signs, notarizes, staples, and attaches a DMG to a GitHub Release.
 
-Configure these repository secrets before pushing a release tag:
+Configure these repository secrets before dispatching a release:
 
 | Secret | Purpose |
 | --- | --- |
