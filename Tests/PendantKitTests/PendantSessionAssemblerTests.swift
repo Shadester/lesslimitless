@@ -44,6 +44,17 @@ final class PendantSessionAssemblerTests: XCTestCase {
         XCTAssertTrue(result.diagnostics.contains(.missingTimestamp(started.identity)))
     }
 
+    func testMixedTimestampGroupUsesSequenceOrder() {
+        let startWithoutTimestamp = page(1, timestamp: nil, audio: audio(start: true, bytes: [1]))
+        let stopWithTimestamp = page(2, timestamp: 9_999, audio: audio(stop: true, bytes: [2]))
+        let result = PendantSessionAssembler().assemble([stopWithTimestamp, startWithoutTimestamp])
+
+        XCTAssertEqual(result.sessions.count, 1)
+        XCTAssertEqual(result.sessions[0].contributions.map(\.identity.sequence), [1, 2])
+        XCTAssertEqual(result.sessions[0].openingBoundary, .recordingStarted(startWithoutTimestamp.identity))
+        XCTAssertEqual(result.sessions[0].closingBoundary, .recordingStopped(stopWithTimestamp.identity))
+    }
+
     func testExcludesPCMNonOpusAndEncryptedAudio() {
         let pcmOnly = page(1, timestamp: 1, audio: audio(codecType: 2, bytes: nil, pcm: Data([7])))
         let nonOpus = page(2, timestamp: 2, audio: audio(codecType: 9, bytes: [8]))
@@ -55,6 +66,19 @@ final class PendantSessionAssemblerTests: XCTestCase {
         XCTAssertTrue(result.diagnostics.contains(.encryptedAudioUnavailable(encrypted.identity)))
     }
 
+    func testRequiresExactlyOneOpusFramePerEncodedPacket() {
+        let missingCodec = page(1, timestamp: 1, audio: audio(codecType: nil, bytes: [1]))
+        let missingFrames = page(2, timestamp: 2, audio: audio(bytes: [2], numFrames: nil))
+        let zeroFrames = page(3, timestamp: 3, audio: audio(bytes: [3], numFrames: 0))
+        let multipleFrames = page(4, timestamp: 4, audio: audio(bytes: [4], numFrames: 2))
+        let result = PendantSessionAssembler().assemble([missingCodec, missingFrames, zeroFrames, multipleFrames])
+
+        XCTAssertEqual(result.sessions[0].contributions.map(\.encodedOpusBytes), [[Data([1])], [], [], []])
+        XCTAssertTrue(result.diagnostics.contains(.invalidOpusFrameCount(missingFrames.identity, numFrames: nil)))
+        XCTAssertTrue(result.diagnostics.contains(.invalidOpusFrameCount(zeroFrames.identity, numFrames: 0)))
+        XCTAssertTrue(result.diagnostics.contains(.invalidOpusFrameCount(multipleFrames.identity, numFrames: 2)))
+    }
+
     private func page(_ sequence: Int, index: Int = 0, timestamp: UInt64?, audio: FlashPageAudio) -> PendantSessionPage {
         PendantSessionPage(
             identity: PendantPageIdentity(deviceID: "device", sessionID: "session", runID: "run", sequence: sequence, pageIndex: index),
@@ -62,12 +86,12 @@ final class PendantSessionAssemblerTests: XCTestCase {
         )
     }
 
-    private func audio(start: Bool = false, stop: Bool = false, codecType: UInt64? = 1, bytes: [UInt8]? = nil, pcm: Data? = nil, encrypted: Bool = false) -> FlashPageAudio {
+    private func audio(start: Bool = false, stop: Bool = false, codecType: UInt64? = 1, bytes: [UInt8]? = nil, pcm: Data? = nil, encrypted: Bool = false, numFrames: UInt64? = 1) -> FlashPageAudio {
         FlashPageAudio(
             pcmOmni: pcm, pcmDirectional: nil, pcmBeamforming: nil,
             codecBeamforming: bytes.map { Data($0) }, codecManualBeamforming: nil, pcmManualBeamforming: nil,
             didStartRecording: start, didStopRecording: stop, codecType: codecType,
-            numFrames: nil, degreeArrival: nil, hasEncryptedCodecPayload: encrypted
+            numFrames: numFrames, degreeArrival: nil, hasEncryptedCodecPayload: encrypted
         )
     }
 }

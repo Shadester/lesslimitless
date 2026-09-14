@@ -16,13 +16,8 @@ public struct PendantSessionArchiver {
 
     @discardableResult
     public func archive(_ session: PendantSessionManifest, sessionID: String) throws -> RawOpusArchive {
-        var bytes = Data()
-        for contribution in session.contributions {
-            for frameGroup in contribution.encodedOpusBytes {
-                bytes.append(frameGroup)
-            }
-        }
-        guard !bytes.isEmpty else { throw PendantSessionArchiveError.emptyEligibleOpus(session) }
-        return try writer.write(opusData: bytes, sessionID: sessionID)
+        let packets = session.contributions.flatMap(\.encodedOpusBytes)
+        guard !packets.isEmpty else { throw PendantSessionArchiveError.emptyEligibleOpus(session) }
+        return try writer.write(opusData: OpusPacketStream.encode(packets), sessionID: sessionID)
     }
 }

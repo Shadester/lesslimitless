@@ -3,14 +3,15 @@ import XCTest
 @testable import PendantKit
 
 final class PendantSessionArchiverTests: XCTestCase {
-    func testArchivesConcatenatedEligibleOpusBytes() throws {
+    func testArchivesLengthFramedEligibleOpusPackets() throws {
         let root = try makeRoot()
         defer { try? FileManager.default.removeItem(at: root) }
-        let session = manifest([[Data([1, 2])], [Data([3])]])
+        let packets = [Data([1, 2]), Data([3])]
+        let session = manifest([[packets[0]], [packets[1]]])
 
         let archive = try PendantSessionArchiver(rootURL: root).archive(session, sessionID: "session-1")
 
-        XCTAssertEqual(try Data(contentsOf: archive.opusURL), Data([1, 2, 3]))
+        XCTAssertEqual(try OpusPacketStream.decode(Data(contentsOf: archive.opusURL)), packets)
     }
 
     func testRefusesSessionWithoutEligibleOpus() throws {

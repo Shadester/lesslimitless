@@ -35,6 +35,7 @@ public enum PendantSessionDiagnostic: Equatable, Sendable {
     case missingTimestamp(PendantPageIdentity)
     case encryptedAudioUnavailable(PendantPageIdentity)
     case unsupportedCodec(PendantPageIdentity, codecType: UInt64)
+    case invalidOpusFrameCount(PendantPageIdentity, numFrames: UInt64?)
 }
 
 public struct PendantSessionManifest: Equatable, Sendable {
@@ -87,9 +88,9 @@ public struct PendantSessionAssembler: Sendable {
         }
         return PendantSessionAssembly(sessions: sessions, diagnostics: diagnostics)
     }
-
     private func assembleGroup(_ pages: [PendantSessionPage]) -> PendantSessionAssembly {
-        let ordered = pages.sorted(by: isOrderedBefore)
+        let useTimestamps = pages.allSatisfy { $0.summary.timestamp != nil }
+        let ordered = pages.sorted { isOrderedBefore($0, $1, useTimestamps: useTimestamps) }
         var sessions: [PendantSessionManifest] = []
         var diagnostics: [PendantSessionDiagnostic] = []
         var contributions: [PendantSessionPageContribution] = []
@@ -135,6 +136,10 @@ public struct PendantSessionAssembler: Sendable {
                 } else if let codecType = item.codecType, codecType != 1 {
                     diagnostics.append(.unsupportedCodec(page.identity, codecType: codecType))
                 } else if let bytes = item.preferredEncodedAudio {
+                    guard item.numFrames == 1 else {
+                        diagnostics.append(.invalidOpusFrameCount(page.identity, numFrames: item.numFrames))
+                        continue
+                    }
                     opus.append(bytes)
                 }
             }
@@ -146,12 +151,10 @@ public struct PendantSessionAssembler: Sendable {
         return PendantSessionAssembly(sessions: sessions, diagnostics: diagnostics)
     }
 
-    /// For a complete timestamp set, order by timestamp then device sequence and
-    /// page index. When any page lacks a timestamp, sequence is the only stable
-    /// ordering evidence and prevents start/stop reversal.
-    private func isOrderedBefore(_ lhs: PendantSessionPage, _ rhs: PendantSessionPage) -> Bool {
-        if lhs.summary.timestamp != nil, rhs.summary.timestamp != nil,
-           lhs.summary.timestamp != rhs.summary.timestamp {
+    /// Uses timestamp order only when a whole recording group has timestamps;
+    /// otherwise sequence/index provides a total stable ordering.
+    private func isOrderedBefore(_ lhs: PendantSessionPage, _ rhs: PendantSessionPage, useTimestamps: Bool) -> Bool {
+        if useTimestamps, lhs.summary.timestamp != rhs.summary.timestamp {
             return lhs.summary.timestamp! < rhs.summary.timestamp!
         }
         if lhs.identity.sequence != rhs.identity.sequence { return lhs.identity.sequence < rhs.identity.sequence }

@@ -16,7 +16,7 @@ final class PendantVaultSessionPipelineTests: XCTestCase {
         XCTAssertEqual(report.loadedPageIdentities, [identity])
         XCTAssertTrue(report.failedPages.isEmpty)
         let archived = try XCTUnwrap(report.archivedSessions.first)
-        XCTAssertEqual(try Data(contentsOf: archived.archive.opusURL), Data([1, 2, 3]))
+        XCTAssertEqual(try OpusPacketStream.decode(Data(contentsOf: archived.archive.opusURL)), [Data([1, 2, 3])])
         XCTAssertTrue(FileManager.default.fileExists(atPath: archived.archive.manifestURL.path))
     }
 
@@ -77,7 +77,7 @@ final class PendantVaultSessionPipelineTests: XCTestCase {
         let expandedID = try XCTUnwrap(expanded.archivedSessions.first?.archiveID)
 
         XCTAssertNotEqual(firstID, expandedID)
-        XCTAssertEqual(try Data(contentsOf: expanded.archivedSessions[0].archive.opusURL), Data([1, 2]))
+        XCTAssertEqual(try OpusPacketStream.decode(Data(contentsOf: expanded.archivedSessions[0].archive.opusURL)), [Data([1]), Data([2])])
     }
 
     func testKnownFailedPageQuarantinesItsWholeRecordingGroup() throws {
@@ -107,6 +107,8 @@ final class PendantVaultSessionPipelineTests: XCTestCase {
         appendVarint(UInt64(opus.count), to: &audio)
         audio.append(opus)
         appendVarint(10 << 3, to: &audio)
+        appendVarint(1, to: &audio)
+        appendVarint(11 << 3, to: &audio)
         appendVarint(1, to: &audio)
 
         var chunk = Data()

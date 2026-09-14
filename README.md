@@ -12,12 +12,13 @@ A native macOS 14+ foundation for a private, local-first pendant and meeting-aud
 - Domain models for recordings, transcripts, jobs, action items, and sync verification.
 - A caller-rooted raw page vault with SHA-256, atomic Codable-ledger persistence, collision detection, and recovery-safe reloads.
 - Cleanup eligibility requires persisted raw-page and audio hashes; no ACK or pendant deletion API is provided.
-- Caller-rooted raw Opus archives atomically persist assembled `.opus.raw` streams with Codable SHA-256/byte-count manifests; identical writes are idempotent and mismatches collide without decode, ACK, or deletion.
+- Caller-rooted Opus packet-stream archives atomically persist length-framed `.opus.raw` streams with Codable SHA-256/byte-count manifests; packet boundaries survive archival, identical writes are idempotent, and mismatches collide without decode, ACK, or deletion.
 - A durable vault-to-session pipeline reloads unverified raw pages, rechecks their SHA-256 hashes, reports failed/corrupt pages, assembles eligible Opus sessions, and writes deterministic SHA-256-derived archive IDs under a caller-supplied root without ACK or deletion.
+- Packet-aligned `PendantSessionManifest` contributions can be decoded locally into immutable, atomic PCM16 WAV exports under a caller-rooted directory; source and WAV SHA-256 manifests make identical exports idempotent and conflicting session IDs collide without raw boundary inference, ACK, deletion, or network access.
 - Golden wire fixtures and adversarial protocol tests.
 
 Stored page payloads can be parsed into bounded diagnostic summaries and raw audio payloads. Raw page vaults preserve received payloads without decoding, acknowledging, or deleting them; the app deliberately exposes no page deletion, storage clear, reset, Wi-Fi, backend, or key-injection commands.
-Parsed summaries can be assembled with the pure, dependency-free `PendantSessionAssembler`. It deterministically groups pages from recording markers or five-minute timestamp gaps, exposes only unmodified eligible Opus codec bytes, and reports missing timestamps and encrypted audio without touching the raw vault or pendant.
+Parsed summaries can be assembled with the pure, dependency-free `PendantSessionAssembler`. It deterministically groups pages from recording markers or five-minute timestamp gaps, exposes only unmodified eligible single-frame Opus codec bytes, and reports missing timestamps, encrypted audio, unsupported codecs, and invalid Opus frame counts without touching the raw vault or pendant.
 
 ## Build, test, and package (macOS)
 
