@@ -1,4 +1,5 @@
 import Combine
+import Domain
 import Foundation
 import Security
 
@@ -37,8 +38,16 @@ final class AppSettingsController: ObservableObject {
             statusMessage = "Could not save provider key"
         }
     }
-}
+    var llmConfiguration: OptionalLLMConfiguration? {
+        guard let endpoint = URL(string: llmEndpoint), !llmModel.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
+        return OptionalLLMConfiguration(endpoint: endpoint, model: llmModel, apiKey: providerKeyDraft.isEmpty ? nil : providerKeyDraft)
+    }
 
+    var transcriptionJobTemplate: LocalTranscriptionJob? {
+        guard let executable = URL(string: whisperExecutablePath), let model = URL(string: whisperModelPath) else { return nil }
+        return LocalTranscriptionJob.whisperCPP(executableURL: executable, modelURL: model, audioURL: URL(fileURLWithPath: "/placeholder.wav"))
+    }
+}
 private enum Keychain {
     static func value(service: String, account: String) -> String? {
         let query: [String: Any] = [kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: service, kSecAttrAccount as String: account, kSecReturnData as String: true]

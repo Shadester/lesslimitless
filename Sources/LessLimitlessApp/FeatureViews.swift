@@ -17,7 +17,9 @@ struct LibraryView: View {
         List {
             Section("Local recordings") {
                 ForEach(recordings) { recording in
-                    LibraryRecordingRow(recording: recording)
+                    NavigationLink { LibraryDetailView(recording: recording) } label: {
+                        LibraryRecordingRow(recording: recording)
+                    }
                 }
             }
         }
