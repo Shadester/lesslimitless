@@ -4,39 +4,66 @@ import Foundation
 import SwiftUI
 
 struct LibraryView: View {
+    @EnvironmentObject private var library: LibraryController
     @State private var query = ""
 
-    private var recordings: [Recording] {
-        guard !query.isEmpty else { return SampleData.recordings }
-        return SampleData.recordings.filter {
-            $0.title.localizedCaseInsensitiveContains(query) ||
-            $0.tags.contains { $0.localizedCaseInsensitiveContains(query) }
-        }
+    private var recordings: [LibraryRecording] {
+        query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            ? library.recordings
+            : library.searchResults.map(\.recording)
     }
 
     var body: some View {
         List {
-            Section {
+            Section("Local recordings") {
                 ForEach(recordings) { recording in
-                    RecordingRow(recording: recording)
+                    LibraryRecordingRow(recording: recording)
                 }
-            } header: {
-                Text("Recent recordings")
             }
         }
         .overlay {
             if recordings.isEmpty {
-                ContentUnavailableView.search(text: query)
+                ContentUnavailableView(
+                    query.isEmpty ? "No local recordings" : "No matching recordings",
+                    systemImage: query.isEmpty ? "waveform" : "magnifyingglass",
+                    description: Text(library.errorMessage ?? "Record Mac audio or sync a pendant to build your local library.")
+                )
             }
         }
-        .searchable(text: $query, prompt: "Search sample library")
+        .searchable(text: $query, prompt: "Search transcript, notes, tags, and summaries")
+        .onChange(of: query) { _, value in Task { await library.search(value) } }
+        .task { await library.reload() }
         .navigationTitle("Library")
         .toolbar {
-            ToolbarItem {
-                Button("Import", systemImage: "square.and.arrow.down") {}
-                    .disabled(true)
-                    .help("Import is not implemented in this preview")
+            ToolbarItem { Button("Refresh", systemImage: "arrow.clockwise") { Task { await library.reload() } } }
+        }
+    }
+}
+
+private struct LibraryRecordingRow: View {
+    let recording: LibraryRecording
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: sourceSymbol).foregroundStyle(Color.accentColor).frame(width: 26)
+            VStack(alignment: .leading, spacing: 4) {
+                Text(recording.title).font(.headline)
+                Text(recording.source.displayName).font(.subheadline).foregroundStyle(.secondary)
+                HStack(spacing: 6) {
+                    Text(recording.startedAt, style: .relative)
+                    Text(recording.processingState.rawValue.capitalized)
+                    ForEach(recording.tags, id: \.self) { Text($0).padding(.horizontal, 5).background(.quaternary, in: Capsule()) }
+                }.font(.caption).foregroundStyle(.secondary)
             }
+            Spacer()
+        }.padding(.vertical, 6)
+    }
+
+    private var sourceSymbol: String {
+        switch recording.source {
+        case .pendant: "wave.3.right"
+        case .macApplication, .systemAudio: "macwindow"
+        case .imported: "arrow.down.doc"
         }
     }
 }
