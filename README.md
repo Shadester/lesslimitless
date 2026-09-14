@@ -23,7 +23,7 @@ Less Limitless connects to the pendant directly over Bluetooth Low Energy, store
 - Pendant erase, ACK, reset, Wi-Fi, backend, and key-injection commands are not exposed.
 - Raw pendant data is preserved before parsing or decoding.
 - Local LLMs can run over loopback. External providers are opt-in and receive transcript text only.
-- Provider credentials are not persisted by the current app UI; use macOS Keychain before shipping a configured provider workflow.
+- Provider credentials are stored only in macOS Keychain; local settings persist endpoint/model paths but not the secret.
 
 ## Requirements
 
@@ -132,8 +132,8 @@ Key modules:
 
 ## Current limitations
 
-- Mac capture tracks are registered in the library after a successful stop, but capture segments are not yet merged into a single playback/transcription asset.
 - Mac capture segments are finalized into a single local M4A asset and registered in the library; microphone and screen tracks are still not mixed into one combined track.
+- Playback controls exist for finalized local assets; waveform/detail enhancements and a unified pendant/Mac playback experience remain to be validated on macOS hardware.
 - Playback waveform/detail enhancements and a unified pendant/Mac playback experience remain to be validated on macOS hardware.
 - Pendant session export and Mac capture are not yet unified into a playback/detail screen.
 - macOS hardware validation, Developer ID credentials, notarization execution, updater, and a production release DMG still need to be performed on a Mac.

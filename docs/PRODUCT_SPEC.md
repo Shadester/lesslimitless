@@ -1,6 +1,6 @@
 # Less Limitless for macOS — Product & Architecture Specification
 
-**Status:** Draft v0.1  
+**Status:** Active implementation — portable core tested; macOS runtime validation pending
 **Target:** macOS 14+  
 **Principle:** The app never calls Limitless APIs or web endpoints. Pendant access is direct over Bluetooth Low Energy.
 
@@ -19,6 +19,23 @@ The app must remain useful with no account, no subscription, and no network conn
 5. **Portable data:** Users can export audio, Markdown, JSON, and SRT/VTT without proprietary lock-in.
 6. **Progressive capability:** BLE sync and playback work without transcription; transcription works without an LLM.
 7. **Explicit consent:** Recording controls and indicators must make capture obvious. The app should remind users to follow local consent laws.
+
+## Current implementation checkpoint (2026-09-14)
+
+### Implemented and tested on Linux
+
+- Bounded BLE protobuf framing, fragment reassembly, safe non-destructive pendant commands, raw page vault, hash verification, recovery, and session archive pipeline.
+- libopus packet-aligned decode, WAV export, raw packet-stream archive, malformed-input limits, and 67 portable tests.
+- Durable JSON recording library with searchable title, notes, tags, transcript segments, and generated artifacts.
+- Local whisper.cpp-compatible `Process` runner with timeout/cancellation, timestamped JSON parsing, and provenance.
+- Optional OpenAI-compatible text provider with loopback/HTTPS policy, disabled redirects, and blocked Limitless hosts.
+- macOS source for ScreenCaptureKit/AVAudioEngine capture, segment manifests, M4A finalization, playback, Keychain settings, Library/Record/Detail views, and Developer ID/notarization tooling.
+
+### Still requires macOS execution
+
+- Compile/type-check against Apple frameworks; exercise TCC permissions, BLE hardware, pendant transfer, capture, AVFoundation export/playback, and Keychain behavior.
+- Run Developer ID signing, notarization, stapling, and DMG release using real credentials.
+- Finish product hardening: sandbox/privacy report, capture-track mixing, background job UX, model installer, retention/export UI, and hardware compatibility matrix.
 
 ## 3. MVP scope
 
@@ -117,7 +134,7 @@ The menu-bar item should show recording/connection state and provide fast record
 - AVAudioEngine/Core Audio for microphone input and conversion.
 - AVFoundation for local audio files.
 - libopus for pendant frame decoding.
-- SQLite with FTS5 for durable metadata, sync state, jobs, and full-text search.
+- Atomic JSON library and page ledgers today; migrate to SQLite/FTS5 when multi-process scale and richer query requirements justify it.
 - whisper.cpp behind a local transcription protocol.
 - Security/Keychain for provider credentials.
 - Unified Logging with private/redacted fields.
@@ -141,7 +158,7 @@ LessLimitlessApp
 │   └── AudioPipeline    resample, mix, meter, segmented writer
 ├── TranscriptionKit     engine protocol + whisper.cpp adapter
 ├── IntelligenceKit      optional local/remote LLM adapters
-├── Persistence          SQLite/FTS, migrations, file store
+├── Persistence          Atomic JSON ledgers, file store, planned SQLite/FTS migration
 ├── Playback             AVFoundation playback and transcript sync
 ├── Export               audio/Markdown/JSON/SRT/VTT
 └── Security             Keychain, endpoint policy, privacy ledger
@@ -274,7 +291,7 @@ If firmware does not provide a proven per-page ACK/delete behavior, retain pages
 
 ## 9. Persistence model
 
-Use SQLite in `~/Library/Application Support/<AppName>/Library.sqlite` and media files under a stable `Media/` hierarchy. Enable WAL mode and migrations. Store secrets only in Keychain.
+Use atomic JSON ledgers under `~/Library/Application Support/LessLimitless/` for the current implementation, with media under stable relative paths. Store provider secrets only in Keychain. SQLite/FTS5 remains the planned migration for multi-process scale and advanced queries.
 
 ### 9.1 Main entities
 
@@ -388,48 +405,35 @@ Speaker diarization is not an MVP promise. Keep optional speaker labels in the s
 
 ## 15. Delivery phases
 
-### Phase 0 — Protocol fixture harness
+### Phase 0 — Protocol fixture harness — **implemented; hardware validation pending**
 
-- Establish repository, Xcode project, CI, formatting, and test targets.
-- Implement wire types and fixture-based parser tests.
-- Capture sanitized hardware traces from an owned pendant.
-- Prove pairing, status, page download, Opus decode, and disconnect recovery.
+- Wire framing, bounded decoding, fixture tests, raw-page persistence, and safe command subset are implemented.
+- Remaining: capture sanitized hardware traces and confirm pairing/download/reconnect against owned pendant firmware.
 
-**Exit:** A command-line/debug harness can download without data loss and decode a short known recording.
+### Phase 1 — Safe pendant library — **implemented core; macOS validation pending**
 
-### Phase 1 — Safe pendant library
+- Durable page ledger, hash verification, session assembly, packet-stream archive, Opus/WAV export, and Library UI/detail workflows are implemented.
+- Remaining: register pendant exports automatically in the app library and verify on actual device data.
 
-- SwiftUI shell, permissions, pairing, remembered device, status, sync progress.
-- SQLite schema and durable page ledger.
-- Playback, encounter grouping, raw/standard audio export.
+### Phase 2 — Mac capture — **implemented source; macOS validation pending**
 
-**Exit:** Repeated/interrupted sync is idempotent; no pendant data is removed automatically.
+- Screen/system/app capture, optional microphone track, segmented CAF recovery, M4A finalization, library registration, and playback controls are implemented.
+- Remaining: real permission, device-change, long-recording, and audio-quality validation; microphone/screen mixing is not yet implemented.
 
-### Phase 2 — Mac capture
+### Phase 3 — Local transcription and search — **implemented core; UX hardening pending**
 
-- Per-app/system capture, microphone mix, meters, segmented writer, recovery.
-- Unified library and source metadata.
+- Local whisper.cpp-compatible runner, timeout/cancellation, timestamp parsing, durable transcript storage, detail action, and local token search are implemented.
+- Remaining: model download/install UX, persistent job queue, long-audio chunking, and macOS runtime tests.
 
-**Exit:** A one-hour recording survives normal source changes and can be played/exported.
+### Phase 4 — Optional intelligence — **implemented core; release validation pending**
 
-### Phase 3 — Local transcription and search
+- Explicit OpenAI-compatible text provider, endpoint policy, redirect blocking, Keychain key storage, Settings UI, and persisted summary artifacts are implemented.
+- Remaining: live provider validation, action-item schema/UI, provenance display, and consent/audit report.
 
-- whisper.cpp model manager and job queue.
-- Timestamped transcript, editing, FTS5, transcript-following playback.
+### Phase 5 — Release hardening — **tooling implemented; credentials/hardware pending**
 
-**Exit:** The complete flow works offline with no account or endpoint configuration.
-
-### Phase 4 — Optional intelligence
-
-- Local and user-configured OpenAI-compatible providers.
-- Summaries, decisions, topics, and action items with provenance/privacy UI.
-
-**Exit:** Local LLM flow works; remote flow requires informed opt-in and passes endpoint/security tests.
-
-### Phase 5 — Release hardening
-
-- Hardware/firmware compatibility matrix, accessibility, performance, privacy report.
-- Sandboxing, signing, notarization, updater strategy, and license notices.
+- macOS signing/notarization/DMG scripts and GitHub Actions CI/release definitions are implemented.
+- Remaining: real Developer ID/API-key secrets, notarization execution, macOS hardware matrix, accessibility pass, sandbox/privacy report, updater, and license decision.
 
 ## 16. MVP acceptance criteria
 
