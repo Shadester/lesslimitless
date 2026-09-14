@@ -1,0 +1,21 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install native dependencies
+        run: brew install opus pkg-config
+      - name: Resolve dependencies
+        run: swift package resolve
+      - name: Run tests
+        run: swift test
+      - name: Verify local app bundle
+        run: ./scripts/build-macos.sh --debug

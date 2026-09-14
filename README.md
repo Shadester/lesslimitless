@@ -94,6 +94,23 @@ To notarize, first create an `xcrun notarytool` Keychain profile on the Mac, the
 
 The script embeds Homebrew's `libopus`, rewrites its load path to the app bundle, signs nested code before the app, verifies the signature, and staples notarized output. It never stores Apple credentials in the repository.
 
+## GitHub Actions releases
+
+`CI` runs on pushes and pull requests to `main`. Pushing a tag such as `v0.1.0` triggers the release workflow, which signs, notarizes, staples, and attaches a DMG to a GitHub Release.
+
+Configure these repository secrets before pushing a release tag:
+
+| Secret | Purpose |
+| --- | --- |
+| `BUILD_CERTIFICATE_BASE64` | Base64-encoded Developer ID Application `.p12` |
+| `P12_PASSWORD` | Password for the `.p12` |
+| `KEYCHAIN_PASSWORD` | Temporary CI keychain password |
+| `APPLE_API_KEY_BASE64` | Base64-encoded App Store Connect API `.p8` key |
+| `APPLE_API_KEY_ID` | App Store Connect API key ID |
+| `APPLE_API_ISSUER_ID` | App Store Connect issuer ID |
+
+The workflow does not need Apple ID passwords or provisioning profiles because it uses Developer ID signing and an App Store Connect API key for notarization.
+
 ## Architecture
 
 ```text
@@ -116,9 +133,9 @@ Key modules:
 ## Current limitations
 
 - Mac capture tracks are registered in the library after a successful stop, but capture segments are not yet merged into a single playback/transcription asset.
-- The app has no model downloader, transcription job UI, provider-settings UI, or Keychain UI yet.
+- The app has no model downloader or transcription job UI yet; local executable/model and optional-provider credentials can be configured in Settings, with API keys stored in Keychain.
 - Pendant session export and Mac capture are not yet unified into a playback/detail screen.
-- No macOS hardware test, signing, sandboxing, notarization, updater, or release DMG has been completed.
+- macOS hardware validation, Developer ID credentials, notarization execution, updater, and a production release DMG still need to be performed on a Mac.
 - Raw Opus bytes without explicit packet boundaries are deliberately not decoded; guessing packet boundaries can silently corrupt audio.
 
 ## Contributing
