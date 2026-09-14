@@ -332,26 +332,31 @@ struct TasksView: View {
 }
 
 struct SettingsView: View {
-    @State private var transcriptionEnabled = false
-    @State private var externalProcessing = false
+    @EnvironmentObject private var settings: AppSettingsController
 
     var body: some View {
         Form {
-            Section("Privacy") {
-                LabeledContent("Data location", value: "On this Mac (planned)")
-                LabeledContent("Network access", value: "None configured")
-                Toggle("Allow external text processing", isOn: $externalProcessing).disabled(true)
-                Text("No analytics, provider, or network integration is included in this shell.")
+            Section("Local transcription") {
+                TextField("whisper.cpp executable", text: $settings.whisperExecutablePath)
+                TextField("Model file", text: $settings.whisperModelPath)
+                Text("Choose a local whisper.cpp-compatible executable and model. Nothing is downloaded automatically.")
                     .font(.caption).foregroundStyle(.secondary)
             }
-            Section("Transcription") {
-                Toggle("Local transcription", isOn: $transcriptionEnabled).disabled(true)
-                LabeledContent("Model", value: "No model installed")
+            Section("Optional text provider") {
+                TextField("OpenAI-compatible endpoint", text: $settings.llmEndpoint)
+                TextField("Model", text: $settings.llmModel)
+                SecureField("API key (Keychain)", text: $settings.providerKeyDraft)
+                Button("Save API Key in Keychain") { settings.saveProviderKey() }
+                Text("Only transcript text is sent. HTTP is allowed only for localhost; remote endpoints must use HTTPS. Redirects and Limitless hosts are blocked.")
+                    .font(.caption).foregroundStyle(.secondary)
             }
             Section("Storage") {
-                LabeledContent("Library", value: "Not initialized")
-                Text("Local files would rely on FileVault; this preview does not claim application-level encryption.")
+                LabeledContent("Library", value: "Application Support/LessLimitless")
+                Text("Files rely on FileVault until an encrypted-library mode is added.")
                     .font(.caption).foregroundStyle(.secondary)
+            }
+            if let status = settings.statusMessage {
+                Section { Text(status).foregroundStyle(.secondary) }
             }
         }
         .formStyle(.grouped)
