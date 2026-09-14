@@ -7,6 +7,7 @@ struct LibraryDetailView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var draft: LibraryRecording
     @State private var isWorking = false
+    @StateObject private var playback = LibraryPlaybackController()
 
     init(recording: LibraryRecording) {
         _draft = State(initialValue: recording)
@@ -24,6 +25,11 @@ struct LibraryDetailView: View {
                 LabeledContent("State", value: draft.processingState.rawValue.capitalized)
             }
             Section("Notes") { TextEditor(text: $draft.notes).frame(minHeight: 120) }
+            Section("Playback") {
+                Button(playback.isPlaying ? "Pause" : "Play", systemImage: playback.isPlaying ? "pause.fill" : "play.fill") { playback.toggle() }
+                    .disabled(!playback.isReady)
+                if let error = playback.errorMessage { Text(error).font(.caption).foregroundStyle(.secondary) }
+            }
             Section("Transcript") {
                 if draft.transcriptSegments.isEmpty { Text("No transcript yet.").foregroundStyle(.secondary) }
                 ForEach(draft.transcriptSegments) { segment in
@@ -45,6 +51,10 @@ struct LibraryDetailView: View {
         }
         .formStyle(.grouped)
         .navigationTitle(draft.title)
+        .task {
+            if let url = await library.mediaURL(for: draft) { playback.load(url) }
+        }
+        .onDisappear { playback.stop() }
         .onReceive(library.$recordings) { recordings in
             if let updated = recordings.first(where: { $0.id == draft.id }) { draft = updated; isWorking = false }
         }
