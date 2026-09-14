@@ -93,10 +93,11 @@ public final class LocalTranscriptionEngine {
 
     private func validateRegularFile(_ url: URL, executable: Bool, error: LocalTranscriptionError) throws {
         guard url.isFileURL else { throw error }
-        let values = try? url.resourceValues(forKeys: [.isRegularFileKey, .isSymbolicLinkKey])
-        guard values?.isRegularFile == true, values?.isSymbolicLink != true else { throw error }
-        if executable && !FileManager.default.isExecutableFile(atPath: url.path) { throw error }
-        if !executable && !FileManager.default.isReadableFile(atPath: url.path) { throw error }
+        let resolved = url.resolvingSymlinksInPath()
+        let values = try? resolved.resourceValues(forKeys: [.isRegularFileKey])
+        guard values?.isRegularFile == true else { throw error }
+        if executable && !FileManager.default.isExecutableFile(atPath: resolved.path) { throw error }
+        if !executable && !FileManager.default.isReadableFile(atPath: resolved.path) { throw error }
     }
 
     private static func parseTimestampedJSON(_ data: Data) throws -> (text: String, segments: [TranscriptSegment], language: String?) {
