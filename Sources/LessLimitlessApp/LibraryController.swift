@@ -68,26 +68,27 @@ final class LibraryController: ObservableObject {
             errorMessage = "Capture was outside the local library root"
             return
         }
-        let relative = String(standardized.path.dropFirst(rootPath.count))
         let source: RecordingSource
         switch request.source {
         case .systemAudio: source = .systemAudio
         case .application(let application): source = .macApplication(name: application.name)
         }
-        let recording = LibraryRecording(
-            title: captureTitle(for: request),
-            source: source,
-            mediaRelativePath: relative,
-            startedAt: Date(),
-            endedAt: Date(),
-            processingState: .captured,
-            tags: ["Mac Capture"]
-        )
         do {
+            let asset = try await CaptureFinalizer.finalize(directory: standardized)
+            let relative = String(asset.standardizedFileURL.path.dropFirst(rootPath.count))
+            let recording = LibraryRecording(
+                title: captureTitle(for: request),
+                source: source,
+                mediaRelativePath: relative,
+                startedAt: Date(),
+                endedAt: Date(),
+                processingState: .captured,
+                tags: ["Mac Capture"]
+            )
             try await store.create(recording)
             await reload()
         } catch {
-            errorMessage = "Could not add captured audio to the library"
+            errorMessage = "Could not finalize captured audio for the library"
         }
     }
 

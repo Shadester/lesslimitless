@@ -133,7 +133,8 @@ Key modules:
 ## Current limitations
 
 - Mac capture tracks are registered in the library after a successful stop, but capture segments are not yet merged into a single playback/transcription asset.
-- The app has no model downloader or transcription job UI yet; local executable/model and optional-provider credentials can be configured in Settings, with API keys stored in Keychain.
+- Mac capture segments are finalized into a single local M4A asset and registered in the library; microphone and screen tracks are still not mixed into one combined track.
+- Playback waveform/detail enhancements and a unified pendant/Mac playback experience remain to be validated on macOS hardware.
 - Pendant session export and Mac capture are not yet unified into a playback/detail screen.
 - macOS hardware validation, Developer ID credentials, notarization execution, updater, and a production release DMG still need to be performed on a Mac.
 - Raw Opus bytes without explicit packet boundaries are deliberately not decoded; guessing packet boundaries can silently corrupt audio.
