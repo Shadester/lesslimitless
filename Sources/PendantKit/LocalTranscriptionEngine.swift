@@ -93,13 +93,14 @@ public final class LocalTranscriptionEngine {
 
     private func validateRegularFile(_ url: URL, executable: Bool, error: LocalTranscriptionError) throws {
         guard url.isFileURL else { throw error }
+        if executable {
+            guard FileManager.default.isExecutableFile(atPath: url.path) else { throw error }
+            return
+        }
         let resolved = url.resolvingSymlinksInPath()
         let values = try? resolved.resourceValues(forKeys: [.isRegularFileKey])
-        guard values?.isRegularFile == true else { throw error }
-        if executable && !FileManager.default.isExecutableFile(atPath: resolved.path) { throw error }
-        if !executable && !FileManager.default.isReadableFile(atPath: resolved.path) { throw error }
+        guard values?.isRegularFile == true, FileManager.default.isReadableFile(atPath: resolved.path) else { throw error }
     }
-
     private static func parseTimestampedJSON(_ data: Data) throws -> (text: String, segments: [TranscriptSegment], language: String?) {
         guard let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
             throw LocalTranscriptionError.malformedTranscript
