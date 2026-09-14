@@ -20,6 +20,8 @@ final class MacAudioCaptureService: NSObject, ObservableObject {
     private var systemWriter: SegmentedAudioWriter?
     private var microphoneWriter: SegmentedAudioWriter?
     private var microphoneEngine: AVAudioEngine?
+    var onRecordingFinished: ((URL, MacAudioCaptureRequest) -> Void)?
+    private var activeRequest: MacAudioCaptureRequest?
 
     func refreshEligibleApplications() async {
         do {
@@ -94,19 +96,24 @@ final class MacAudioCaptureService: NSObject, ObservableObject {
             streamOutput = output
             stream = newStream
             recordingDirectory = directory
+            activeRequest = request
             if request.includeMicrophone { try startMicrophone(in: directory, request: request, store: store) }
             try await newStream.startCapture()
             state = .recording
         } catch {
-            await stop()
+            await stop(register: false)
             fail(error)
         }
     }
 
-    func stop() async {
+    func stop(register: Bool = true) async {
         let activeStream = stream
+        let finishedDirectory = recordingDirectory
+        let finishedRequest = activeRequest
+        let shouldRegister = register && state == .recording
         stream = nil
         streamOutput = nil
+        activeRequest = nil
         if let activeStream { try? await activeStream.stopCapture() }
         if let engine = microphoneEngine {
             engine.inputNode.removeTap(onBus: 0)
@@ -118,6 +125,9 @@ final class MacAudioCaptureService: NSObject, ObservableObject {
         systemWriter = nil
         microphoneWriter = nil
         if state == .recording { state = .stopped }
+        if shouldRegister, let finishedDirectory, let finishedRequest {
+            onRecordingFinished?(finishedDirectory, finishedRequest)
+        }
     }
 
     private func makeFilter(for source: MacAudioCaptureSource, content: SCShareableContent, display: SCDisplay) throws -> SCContentFilter {
@@ -152,7 +162,7 @@ final class MacAudioCaptureService: NSObject, ObservableObject {
         let message = error.localizedDescription
         Task { [weak self] in
             guard let self else { return }
-            await self.stop()
+            await self.stop(register: false)
             self.errorMessage = message
             self.state = .failed
         }

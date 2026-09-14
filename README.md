@@ -1,87 +1,121 @@
 # Less Limitless
 
-A native macOS 14+ foundation for a private, local-first pendant and meeting-audio library. It communicates directly with the pendant over Bluetooth Low Energy and contains no Limitless API integration.
+A private, local-first macOS app for the Limitless Pendant and Mac audio capture.
 
-## Implemented
+Less Limitless connects to the pendant directly over Bluetooth Low Energy, stores recordings on your Mac, and is designed to work without a Limitless account or any Limitless API endpoint.
 
-- SwiftUI application shell for Library, Record, Pendant, Tasks, and Settings.
-- Deferred Bluetooth permission: CoreBluetooth starts only after **Enable Bluetooth**.
-- Service-filtered pendant discovery, explicit device selection, remembered reconnect, and battery reads.
-- Non-destructive TimeSync, device info/status, and stored-page download commands.
-- Bounded protobuf envelope decoding, fragmentation, and timeout-aware out-of-order reassembly.
-- Domain models for recordings, transcripts, jobs, action items, sync verification, and durable library entries.
-- A caller-rooted raw page vault with SHA-256, atomic Codable-ledger persistence, collision detection, and recovery-safe reloads.
-- Cleanup eligibility requires persisted raw-page and audio hashes; no ACK or pendant deletion API is provided.
-- Caller-rooted Opus packet-stream archives atomically persist length-framed `.opus.raw` streams with Codable SHA-256/byte-count manifests; packet boundaries survive archival, identical writes are idempotent, and mismatches collide without decode, ACK, or deletion.
-- A durable vault-to-session pipeline reloads unverified raw pages, rechecks their SHA-256 hashes, reports failed/corrupt pages, assembles eligible Opus sessions, and writes deterministic SHA-256-derived archive IDs under a caller-supplied root without ACK or deletion.
-- Packet-aligned `PendantSessionManifest` contributions can be decoded locally into immutable, atomic PCM16 WAV exports under a caller-rooted directory; source and WAV SHA-256 manifests make identical exports idempotent and conflicting session IDs collide without raw boundary inference, ACK, deletion, or network access.
-- Golden wire fixtures and adversarial protocol tests.
-- Local transcription jobs invoke only a user-configured local executable through Foundation `Process` (no shell or network), with regular-file validation, cancellation/timeout handling, bounded stdout/stderr capture, whisper.cpp JSON timestamps, and execution provenance.
-- macOS 14-only `MacAudioCaptureService`: enumerates eligible ScreenCaptureKit applications, explicitly requests Screen Recording and optional microphone permission, captures system or selected-application audio plus an optional AVAudioEngine microphone track, and stores local segmented CAF files with an atomic crash-recovery `manifest.json` under a caller-supplied root; it performs no network access.
+> **Project status:** active foundation. The portable core is tested on Linux; Bluetooth, ScreenCaptureKit, microphone permissions, and SwiftUI must still be validated on a Mac.
 
-Stored page payloads can be parsed into bounded diagnostic summaries and raw audio payloads. Raw page vaults preserve received payloads without decoding, acknowledging, or deleting them; the app deliberately exposes no page deletion, storage clear, reset, Wi-Fi, backend, or key-injection commands.
-Parsed summaries can be assembled with the pure, dependency-free `PendantSessionAssembler`. It deterministically groups pages from recording markers or five-minute timestamp gaps, exposes only unmodified eligible single-frame Opus codec bytes, and reports missing timestamps, encrypted audio, unsupported codecs, and invalid Opus frame counts without touching the raw vault or pendant.
+## Highlights
 
-## Build, test, and package (macOS)
+- **Direct pendant BLE access** — discovery, pairing trigger, battery reading, status/info requests, and non-destructive stored-page download.
+- **Safe local sync** — raw flash pages are hash-verified, stored atomically, and never acknowledged or erased automatically.
+- **Pendant audio pipeline** — bounded protobuf parsing, session grouping, Opus packet provenance, libopus decode, and WAV export.
+- **Mac capture** — ScreenCaptureKit system or per-app audio plus optional microphone input, written as recoverable CAF segments with a manifest.
+- **Local library and search** — durable recording metadata, notes, tags, transcript segments, generated artifacts, and diacritic-insensitive full-text search.
+- **Local transcription** — runs a user-supplied whisper.cpp-compatible executable through `Process`; no shell or network calls.
+- **Optional LLM providers** — explicit OpenAI-compatible, text-only requests. HTTP is limited to loopback; remote providers require HTTPS; redirects and Limitless hosts are blocked.
 
-### Prerequisites
+## Privacy and safety
 
-- macOS 14 or newer
-- Xcode 15 or newer, including Command Line Tools
-- Swift 5.9 or newer (`swift --version`)
-- Internet access on the first build to resolve [swift-crypto](https://github.com/apple/swift-crypto)
-- libopus development files (`brew install opus` on macOS; `sudo dnf install opus-devel` on Fedora; `libopus-dev` on Debian/Ubuntu)
+- No Limitless API, account, ingestion, or cloud dependency.
+- No telemetry, analytics, or remote logging.
+- Pendant erase, ACK, reset, Wi-Fi, backend, and key-injection commands are not exposed.
+- Raw pendant data is preserved before parsing or decoding.
+- Local LLMs can run over loopback. External providers are opt-in and receive transcript text only.
+- Provider credentials are not persisted by the current app UI; use macOS Keychain before shipping a configured provider workflow.
 
-The Swift package resolves its dependencies automatically. Resolve them explicitly when preparing an offline build:
+## Requirements
+
+### macOS app
+
+- macOS 14+
+- Xcode 15+ / Swift 5.9+
+- [libopus](https://opus-codec.org/):
 
 ```sh
+brew install opus
+```
+
+### Linux core tests
+
+```sh
+sudo dnf install swift-lang opus-devel
+```
+
+For Debian/Ubuntu, install `libopus-dev` plus a Swift toolchain.
+
+## Build and run
+
+Clone the repository and resolve dependencies:
+
+```sh
+git clone https://github.com/Shadester/lesslimitless.git
+cd lesslimitless
 swift package resolve
 ```
 
-### Run tests
+Run the portable test suite:
 
 ```sh
-# Debug tests
 swift test
-
-# Optimized release tests
 swift test -c release
 ```
 
-### Build the executable
+Build the macOS executable:
 
 ```sh
-# Debug executable
 swift build -c debug --product LessLimitlessApp
-
-# Optimized release executable
 swift build -c release --product LessLimitlessApp
-
-# Print the directory containing the selected build output
-swift build -c release --show-bin-path
 ```
 
-`swift build` produces a bare executable. Use the bundle command below for Bluetooth privacy strings and normal macOS app launching.
-
-### Build a local `.app` bundle
+Create a local development app bundle:
 
 ```sh
-# Debug bundle (default)
 ./build-app.sh
-
-# Optimized release bundle
 CONFIGURATION=release ./build-app.sh
-
-# Launch the resulting app
 open ".build/app/Less Limitless.app"
 ```
 
-The bundling script copies `Resources/Info.plist`, including the Bluetooth, microphone, and screen-capture purpose strings, and ad-hoc signs the local bundle when `codesign` is available.
+The bundle script copies `Resources/Info.plist` and ad-hoc signs the app when `codesign` is available. It is not a notarized release package.
 
-This is a local development package only. App Sandbox configuration, Developer ID signing, notarization, DMG packaging, and an auto-updater are not implemented yet.
+## Architecture
+
+```text
+Pendant BLE ──> raw page vault ──> parser/session assembly ──> packet stream/WAV
+                                                               └─> durable library/search
+
+Mac system/app audio + microphone ──> recoverable CAF segments ──> durable library
+
+WAV/audio ──> local whisper.cpp process ──> timestamped transcript ──> local search
+                                                        └─> optional configured LLM
+```
+
+Key modules:
+
+- `Sources/PendantKit` — BLE protocol, vault, parsing, Opus/WAV, library, transcription, optional provider client.
+- `Sources/Domain` — durable recording, transcript, library, transcription, and provider models.
+- `Sources/LessLimitlessApp` — SwiftUI shell, Mac capture service, Record and Library views.
+- `Tests` — protocol, storage, decode, export, search, transcription, and provider tests.
 
 ## Current limitations
 
-Raw Opus decoding is local-only and uses the system libopus library. It accepts a packet-aligned `[Data]` sequence of 16 kHz mono Opus packets, bounds packet/input/output sizes, and can encode decoded Float PCM as atomic PCM16 WAV files. Arbitrary concatenated raw bytes are deliberately rejected because the format has no safe packet delimiter. It does not invoke ffmpeg or any network service.
+- Mac capture tracks are registered in the library after a successful stop, but capture segments are not yet merged into a single playback/transcription asset.
+- The app has no model downloader, transcription job UI, provider-settings UI, or Keychain UI yet.
+- Pendant session export and Mac capture are not yet unified into a playback/detail screen.
+- No macOS hardware test, signing, sandboxing, notarization, updater, or release DMG has been completed.
+- Raw Opus bytes without explicit packet boundaries are deliberately not decoded; guessing packet boundaries can silently corrupt audio.
 
-Mac audio capture is available only in the macOS 14+ app target; it is not built or claimed to work on Linux. The Record view captures system/application and optional microphone tracks into separately recoverable CAF segments with a local manifest. Local transcription requires a user-supplied compatible executable and model; it never downloads either. A Foundation-only, caller-rooted `LocalLibraryStore` atomically persists recording metadata, relative media references, transcript segments, notes, tags, processing state, and generated artifacts as JSON; it also provides local case/diacritic-insensitive token search. Optional OpenAI-compatible LLM providers are available only through explicit user configuration: loopback HTTP or remote HTTPS, text-only requests, and no redirects or Limitless hosts. Do not erase the pendant after a diagnostic page transfer. See `docs/PRODUCT_SPEC.md` for the architecture, safety requirements, and delivery phases.
+## Contributing
+
+Please keep new features local-first and non-destructive. Do not add Limitless endpoint calls. Add tests for protocol, storage, or processing changes, and run:
+
+```sh
+swift test
+```
+
+See [`docs/PRODUCT_SPEC.md`](docs/PRODUCT_SPEC.md) for the architecture and longer-term roadmap.
+
+## License
+
+This repository does not currently include a release license. Review the reverse-engineered protocol provenance in [`docs/PRODUCT_SPEC.md`](docs/PRODUCT_SPEC.md) before redistribution or commercial use.

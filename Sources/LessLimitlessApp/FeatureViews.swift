@@ -129,6 +129,7 @@ private struct StatusBadge: View {
 }
 
 struct RecordView: View {
+    @EnvironmentObject private var library: LibraryController
     @StateObject private var capture = MacAudioCaptureService()
     @State private var selectedApplication: MacAudioCaptureApplication?
     @State private var captureSystemAudio = true
@@ -181,6 +182,11 @@ struct RecordView: View {
         }
         .navigationTitle("Record")
         .task { await capture.refreshEligibleApplications() }
+        .onAppear {
+            capture.onRecordingFinished = { directory, request in
+                Task { await library.registerCapture(directory: directory, request: request) }
+            }
+        }
     }
 
     private var statusText: String {
