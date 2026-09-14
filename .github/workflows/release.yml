@@ -1,6 +1,6 @@
 name: Release macOS app
 
-on:
+'on':
   push:
     tags: ['v*']
 
