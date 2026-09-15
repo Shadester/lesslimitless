@@ -3,14 +3,6 @@ import Domain
 import Foundation
 import PendantKit
 
-/// Which engine to run for a `LibraryController.transcribe` call. whisper.cpp
-/// needs a prebuilt job (executable/model/arguments); Apple Speech just needs
-/// the audio file, so it has no associated value.
-enum TranscriptionSource {
-    case whisperCPP(LocalTranscriptionJob)
-    case appleSpeech
-}
-
 @MainActor
 final class LibraryController: ObservableObject {
     @Published private(set) var recordings: [LibraryRecording] = []
@@ -152,7 +144,7 @@ final class LibraryController: ObservableObject {
         }
     }
 
-    func transcribe(_ recording: LibraryRecording, source: TranscriptionSource) async {
+    func transcribe(_ recording: LibraryRecording, job: LocalTranscriptionJob) async {
         guard let store, let mediaURL = await mediaURL(for: recording), !mediaURL.hasDirectoryPath else {
             errorMessage = "Transcription requires a single local audio file"
             return
@@ -163,24 +155,18 @@ final class LibraryController: ObservableObject {
         do { try await store.upsert(processing); await reload() }
         catch { errorMessage = "Could not queue transcription"; return }
 
+        let configuredJob = LocalTranscriptionJob(
+            executableURL: job.executableURL,
+            audioURL: mediaURL,
+            arguments: job.arguments.map { $0 == job.audioURL.path ? mediaURL.path : $0 },
+            timeout: job.timeout,
+            maximumOutputBytes: job.maximumOutputBytes,
+            expectsTimestampedJSON: job.expectsTimestampedJSON
+        )
         do {
-            let result: LocalTranscriptionResult
-            switch source {
-            case .whisperCPP(let job):
-                let configuredJob = LocalTranscriptionJob(
-                    executableURL: job.executableURL,
-                    audioURL: mediaURL,
-                    arguments: job.arguments.map { $0 == job.audioURL.path ? mediaURL.path : $0 },
-                    timeout: job.timeout,
-                    maximumOutputBytes: job.maximumOutputBytes,
-                    expectsTimestampedJSON: job.expectsTimestampedJSON
-                )
-                result = try await Task.detached(priority: .utility) {
-                    try LocalTranscriptionEngine().transcribe(configuredJob)
-                }.value
-            case .appleSpeech:
-                result = try await AppleSpeechTranscriptionEngine().transcribe(audioURL: mediaURL)
-            }
+            let result = try await Task.detached(priority: .utility) {
+                try LocalTranscriptionEngine().transcribe(configuredJob)
+            }.value
             var completed = processing
             completed.transcriptSegments = result.segments
             completed.processingState = .ready
@@ -222,17 +208,17 @@ final class LibraryController: ObservableObject {
 
     /// Transcribes (and optionally summarizes) every `.captured` recording serially,
     /// so a sync that imports several encounters doesn't spawn N concurrent whisper
-    /// processes. Safe to call repeatedly: `transcribe(_:source:)` moves a record out
-    /// of `.captured` before this loop would revisit it, and a second concurrent call
-    /// is blocked by `isProcessingQueue`.
-    func processPendingTranscriptions(source: TranscriptionSource?, summaryConfiguration: OptionalLLMConfiguration?) async {
-        guard let source, !isProcessingQueue else { return }
+    /// processes. Safe to call repeatedly: `transcribe(_:job:)` moves a record out of
+    /// `.captured` before this loop would revisit it, and a second concurrent call is
+    /// blocked by `isProcessingQueue`.
+    func processPendingTranscriptions(job: LocalTranscriptionJob?, summaryConfiguration: OptionalLLMConfiguration?) async {
+        guard let job, !isProcessingQueue else { return }
         isProcessingQueue = true
         defer { isProcessingQueue = false; transcribingID = nil }
 
         while let next = recordings.first(where: { $0.processingState == .captured && $0.mediaRelativePath != nil }) {
             transcribingID = next.id
-            await transcribe(next, source: source)
+            await transcribe(next, job: job)
             if let summaryConfiguration, let updated = recordings.first(where: { $0.id == next.id }), updated.processingState == .ready {
                 await generateSummary(updated, configuration: summaryConfiguration)
             }
