@@ -38,7 +38,7 @@ struct LibraryView: View {
             .onChange(of: query) { _, value in Task { await library.search(value) } }
             .task {
                 await library.reload()
-                await library.processPendingTranscriptions(job: settings.transcriptionJobTemplate, summaryConfiguration: settings.autoSummarize ? settings.llmConfiguration : nil)
+                await library.processPendingTranscriptions(source: settings.transcriptionSource, summaryConfiguration: settings.autoSummarize ? settings.llmConfiguration : nil)
             }
             .navigationTitle("Library")
             .toolbar {
@@ -327,7 +327,7 @@ struct PendantView: View {
                                     syncStatusText = imported > 0 ? "Synced \(imported) new recording(s)." : "No new recordings to sync."
                                 }
                                 isSyncingToLibrary = false
-                                await library.processPendingTranscriptions(job: settings.transcriptionJobTemplate, summaryConfiguration: settings.autoSummarize ? settings.llmConfiguration : nil)
+                                await library.processPendingTranscriptions(source: settings.transcriptionSource, summaryConfiguration: settings.autoSummarize ? settings.llmConfiguration : nil)
                             }
                         }.disabled(isSyncingToLibrary)
                         Button("Refresh Status") { client.requestDeviceStatus() }
@@ -396,10 +396,18 @@ struct SettingsView: View {
     var body: some View {
         Form {
             Section("Local transcription") {
-                TextField("whisper.cpp executable", text: $settings.whisperExecutablePath)
-                TextField("Model file", text: $settings.whisperModelPath)
-                Text("A whisper.cpp executable and tiny English model ship with the app by default. Override with your own local build/model if you want a different language or accuracy tradeoff.")
-                    .font(.caption).foregroundStyle(.secondary)
+                Picker("Engine", selection: $settings.transcriptionEngine) {
+                    ForEach(TranscriptionEngineKind.allCases) { Text($0.label).tag($0) }
+                }
+                if settings.transcriptionEngine == .whisperCPP {
+                    TextField("whisper.cpp executable", text: $settings.whisperExecutablePath)
+                    TextField("Model file", text: $settings.whisperModelPath)
+                    Text("A whisper.cpp executable and base English model ship with the app by default. Override with your own local build/model if you want a different language or accuracy tradeoff.")
+                        .font(.caption).foregroundStyle(.secondary)
+                } else {
+                    Text("Uses macOS's built-in on-device speech recognizer. No bundled model, nothing leaves the Mac, but macOS asks for Speech Recognition permission the first time.")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
             }
             Section("Optional text provider") {
                 TextField("OpenAI-compatible endpoint", text: $settings.llmEndpoint)

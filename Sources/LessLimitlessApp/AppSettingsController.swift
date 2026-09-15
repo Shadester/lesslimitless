@@ -3,10 +3,24 @@ import Domain
 import Foundation
 import Security
 
+enum TranscriptionEngineKind: String, CaseIterable, Identifiable, Codable {
+    case whisperCPP
+    case appleSpeech
+
+    var id: Self { self }
+    var label: String {
+        switch self {
+        case .whisperCPP: "whisper.cpp (bundled, offline)"
+        case .appleSpeech: "Apple Speech (on-device, no bundled model)"
+        }
+    }
+}
+
 @MainActor
 final class AppSettingsController: ObservableObject {
     @Published var whisperExecutablePath: String { didSet { defaults.set(whisperExecutablePath, forKey: Keys.whisperExecutable) } }
     @Published var whisperModelPath: String { didSet { defaults.set(whisperModelPath, forKey: Keys.whisperModel) } }
+    @Published var transcriptionEngine: TranscriptionEngineKind { didSet { defaults.set(transcriptionEngine.rawValue, forKey: Keys.transcriptionEngine) } }
     @Published var llmEndpoint: String { didSet { defaults.set(llmEndpoint, forKey: Keys.llmEndpoint) } }
     @Published var llmModel: String { didSet { defaults.set(llmModel, forKey: Keys.llmModel) } }
     @Published var autoSummarize: Bool { didSet { defaults.set(autoSummarize, forKey: Keys.autoSummarize) } }
@@ -17,6 +31,7 @@ final class AppSettingsController: ObservableObject {
     private enum Keys {
         static let whisperExecutable = "LessLimitless.whisperExecutable"
         static let whisperModel = "LessLimitless.whisperModel"
+        static let transcriptionEngine = "LessLimitless.transcriptionEngine"
         static let llmEndpoint = "LessLimitless.llmEndpoint"
         static let llmModel = "LessLimitless.llmModel"
         static let autoSummarize = "LessLimitless.autoSummarize"
@@ -29,6 +44,7 @@ final class AppSettingsController: ObservableObject {
         whisperExecutablePath = (savedExecutable?.isEmpty == false ? savedExecutable : nil) ?? Self.bundledWhisperExecutablePath ?? ""
         let savedModel = defaults.string(forKey: Keys.whisperModel)
         whisperModelPath = (savedModel?.isEmpty == false ? savedModel : nil) ?? Self.bundledWhisperModelPath ?? ""
+        transcriptionEngine = defaults.string(forKey: Keys.transcriptionEngine).flatMap(TranscriptionEngineKind.init(rawValue:)) ?? .whisperCPP
         llmEndpoint = defaults.string(forKey: Keys.llmEndpoint) ?? "http://localhost:11434/v1/chat/completions"
         llmModel = defaults.string(forKey: Keys.llmModel) ?? ""
         // Default off: transcription stays on-device, but summarization transmits
@@ -59,6 +75,15 @@ final class AppSettingsController: ObservableObject {
         // stretch has no detected speech. -mc 0 below already fixes the more common
         // hallucination loop; re-enable vadModelURL once that's fixed upstream.
         return LocalTranscriptionJob.whisperCPP(executableURL: executable, modelURL: model, audioURL: URL(fileURLWithPath: "/placeholder.wav"))
+    }
+
+    /// The engine + config picked in Settings, ready to hand to `LibraryController`.
+    /// `nil` only for whisper.cpp when no executable/model is configured.
+    var transcriptionSource: TranscriptionSource? {
+        switch transcriptionEngine {
+        case .whisperCPP: transcriptionJobTemplate.map { .whisperCPP($0) }
+        case .appleSpeech: .appleSpeech
+        }
     }
 
     /// The whisper.cpp CLI bundled into Contents/Resources by scripts/build-macos.sh, if present.

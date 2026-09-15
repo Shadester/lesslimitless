@@ -30,7 +30,7 @@ struct LibraryDetailView: View {
         .toolbar {
             ToolbarItemGroup {
                 if isWorking { ProgressView().controlSize(.small) }
-                Button("Transcribe") { transcribe() }.disabled(settings.transcriptionJobTemplate == nil || isWorking)
+                Button("Transcribe") { transcribe() }.disabled(settings.transcriptionSource == nil || isWorking)
                 Button("Summarize") { summarize() }.disabled(settings.llmConfiguration == nil || draft.transcriptSegments.isEmpty || isWorking)
                 Button("Save") { Task { await library.save(draft) } }
                 Button("Delete", role: .destructive) { Task { await library.delete(draft); dismiss() } }
@@ -155,8 +155,8 @@ struct LibraryDetailView: View {
     }
 
     private func transcribe() {
-        guard let template = settings.transcriptionJobTemplate else { return }
-        Task { await library.transcribe(draft, job: template) }
+        guard let source = settings.transcriptionSource else { return }
+        Task { await library.transcribe(draft, source: source) }
     }
 
     private func summarize() {

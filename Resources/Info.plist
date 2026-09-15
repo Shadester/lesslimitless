@@ -26,6 +26,8 @@
     <string>Less Limitless will use the microphone only when you explicitly start a Mac recording with microphone capture enabled.</string>
     <key>NSScreenCaptureUsageDescription</key>
     <string>Less Limitless uses Screen Recording permission only when you explicitly capture local system or application audio.</string>
+    <key>NSSpeechRecognitionUsageDescription</key>
+    <string>Less Limitless uses on-device Speech Recognition to transcribe recordings when Apple Speech is selected as the transcription engine in Settings.</string>
     <key>NSHighResolutionCapable</key>
     <true/>
 </dict>
