@@ -9,6 +9,7 @@ final class AppSettingsController: ObservableObject {
     @Published var whisperModelPath: String { didSet { defaults.set(whisperModelPath, forKey: Keys.whisperModel) } }
     @Published var llmEndpoint: String { didSet { defaults.set(llmEndpoint, forKey: Keys.llmEndpoint) } }
     @Published var llmModel: String { didSet { defaults.set(llmModel, forKey: Keys.llmModel) } }
+    @Published var autoSummarize: Bool { didSet { defaults.set(autoSummarize, forKey: Keys.autoSummarize) } }
     @Published var providerKeyDraft = ""
     @Published private(set) var statusMessage: String?
 
@@ -18,6 +19,7 @@ final class AppSettingsController: ObservableObject {
         static let whisperModel = "LessLimitless.whisperModel"
         static let llmEndpoint = "LessLimitless.llmEndpoint"
         static let llmModel = "LessLimitless.llmModel"
+        static let autoSummarize = "LessLimitless.autoSummarize"
         static let providerKeyAccount = "optional-llm-api-key"
         static let service = "app.lesslimitless"
     }
@@ -29,6 +31,9 @@ final class AppSettingsController: ObservableObject {
         whisperModelPath = (savedModel?.isEmpty == false ? savedModel : nil) ?? Self.bundledWhisperModelPath ?? ""
         llmEndpoint = defaults.string(forKey: Keys.llmEndpoint) ?? "http://localhost:11434/v1/chat/completions"
         llmModel = defaults.string(forKey: Keys.llmModel) ?? ""
+        // Default off: transcription stays on-device, but summarization transmits
+        // transcript text to whatever endpoint is configured.
+        autoSummarize = defaults.object(forKey: Keys.autoSummarize) as? Bool ?? false
         providerKeyDraft = Keychain.value(service: Keys.service, account: Keys.providerKeyAccount) ?? ""
     }
 

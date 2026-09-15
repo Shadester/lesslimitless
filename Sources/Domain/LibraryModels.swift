@@ -72,10 +72,22 @@ public struct LibraryRecording: Identifiable, Codable, Hashable, Sendable {
     }
 
     /// Span from first to last recorded page timestamp; an approximation of audio
-    /// length, not a decode of the underlying media file.
+    /// length, not a decode of the underlying media file. For a merged pendant
+    /// encounter this includes silence between bursts, so it can run noticeably
+    /// longer than the actual audio (~37% longer on a measured day of wear).
     public var duration: TimeInterval? {
         guard let endedAt else { return nil }
         return max(0, endedAt.timeIntervalSince(startedAt))
+    }
+
+    /// Summary text when one has been generated, else the opening of the transcript.
+    /// Used by list rows to lead with what was said rather than recording metadata.
+    public var semanticPreview: String? {
+        if let summary = generatedArtifacts.last(where: { $0.kind.hasPrefix("summary") }) {
+            return summary.text
+        }
+        guard !transcriptSegments.isEmpty else { return nil }
+        return transcriptSegments.map(\.text).joined(separator: " ")
     }
 }
 

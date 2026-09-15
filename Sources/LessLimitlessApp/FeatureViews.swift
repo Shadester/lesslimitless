@@ -5,6 +5,7 @@ import SwiftUI
 
 struct LibraryView: View {
     @EnvironmentObject private var library: LibraryController
+    @EnvironmentObject private var settings: AppSettingsController
     @State private var query = ""
 
     private var recordings: [LibraryRecording] {
@@ -35,7 +36,10 @@ struct LibraryView: View {
             }
             .searchable(text: $query, prompt: "Search transcript, notes, tags, and summaries")
             .onChange(of: query) { _, value in Task { await library.search(value) } }
-            .task { await library.reload() }
+            .task {
+                await library.reload()
+                await library.processPendingTranscriptions(job: settings.transcriptionJobTemplate, summaryConfiguration: settings.autoSummarize ? settings.llmConfiguration : nil)
+            }
             .navigationTitle("Library")
             .toolbar {
                 ToolbarItem { Button("Refresh", systemImage: "arrow.clockwise") { Task { await library.reload() } } }
@@ -52,13 +56,20 @@ private struct LibraryRecordingRow: View {
             Image(systemName: sourceSymbol).foregroundStyle(Color.accentColor).frame(width: 26)
             VStack(alignment: .leading, spacing: 4) {
                 Text(recording.title).font(.headline)
-                Text(recording.source.displayName).font(.subheadline).foregroundStyle(.secondary)
+                if let preview = recording.semanticPreview {
+                    Text(preview).font(.subheadline).foregroundStyle(.primary).lineLimit(2)
+                } else {
+                    Text(recording.processingState.rawValue.capitalized)
+                        .font(.subheadline).foregroundStyle(.secondary)
+                }
                 HStack(spacing: 6) {
+                    Text(recording.source.displayName)
+                    Text("·")
                     Text(recording.startedAt, style: .relative)
                     if let duration = recording.duration {
+                        Text("·")
                         Text(duration.formattedDuration)
                     }
-                    Text(recording.processingState.rawValue.capitalized)
                     ForEach(recording.tags, id: \.self) { Text($0).padding(.horizontal, 5).background(.quaternary, in: Capsule()) }
                 }.font(.caption).foregroundStyle(.secondary)
             }
@@ -234,6 +245,7 @@ private struct LevelRow: View {
 struct PendantView: View {
     @EnvironmentObject private var client: PendantClient
     @EnvironmentObject private var library: LibraryController
+    @EnvironmentObject private var settings: AppSettingsController
     @State private var isSyncingToLibrary = false
     @State private var syncStatusText: String?
 
@@ -299,6 +311,7 @@ struct PendantView: View {
                                     syncStatusText = imported > 0 ? "Synced \(imported) new recording(s)." : "No new recordings to sync."
                                 }
                                 isSyncingToLibrary = false
+                                await library.processPendingTranscriptions(job: settings.transcriptionJobTemplate, summaryConfiguration: settings.autoSummarize ? settings.llmConfiguration : nil)
                             }
                         }.disabled(isSyncingToLibrary)
                         Button("Refresh Status") { client.requestDeviceStatus() }
@@ -379,6 +392,9 @@ struct SettingsView: View {
                 Button("Save API Key in Keychain") { settings.saveProviderKey() }
                 Text("Only transcript text is sent. HTTP is allowed only for localhost; remote endpoints must use HTTPS. Redirects and Limitless hosts are blocked.")
                     .font(.caption).foregroundStyle(.secondary)
+                Toggle("Auto-summarize after transcription", isOn: $settings.autoSummarize)
+                Text("Off by default. When on, every new recording's transcript is sent to the endpoint above as soon as it's transcribed.")
+                    .font(.caption).foregroundStyle(.secondary)
             }
             Section("Storage") {
                 LabeledContent("Library", value: "Application Support/LessLimitless")
@@ -416,7 +432,7 @@ private struct DetailLine: View {
     }
 }
 
-private extension TimeInterval {
+extension TimeInterval {
     var formattedDuration: String {
         let totalSeconds = max(0, Int(self))
         let hours = totalSeconds / 3_600

@@ -9,6 +9,8 @@ final class LibraryController: ObservableObject {
     @Published private(set) var searchResults: [LibrarySearchResult] = []
     @Published private(set) var errorMessage: String?
     @Published private(set) var activeRecordingID: UUID?
+    @Published private(set) var transcribingID: UUID?
+    private var isProcessingQueue = false
 
     private let rootURL: URL
     private let store: LocalLibraryStore?
@@ -194,13 +196,33 @@ final class LibraryController: ObservableObject {
                 LLMGenerationRequest(transcript: transcript, instruction: "Summarize the transcript. Include decisions and action items when present."),
                 configuration: configuration
             )
+            let disposition = result.processedRemotely ? "sent to \(result.providerHost)" : "stayed on device"
             var updated = recording
-            updated.generatedArtifacts.append(LibraryGeneratedArtifact(kind: "summary (\(result.model))", text: result.text))
+            updated.generatedArtifacts.append(LibraryGeneratedArtifact(kind: "summary (\(result.model)) · \(disposition)", text: result.text))
             updated.updatedAt = Date()
             try await store.upsert(updated)
             await reload()
         } catch {
             errorMessage = "Summary generation failed"
+        }
+    }
+
+    /// Transcribes (and optionally summarizes) every `.captured` recording serially,
+    /// so a sync that imports several encounters doesn't spawn N concurrent whisper
+    /// processes. Safe to call repeatedly: `transcribe(_:job:)` moves a record out of
+    /// `.captured` before this loop would revisit it, and a second concurrent call is
+    /// blocked by `isProcessingQueue`.
+    func processPendingTranscriptions(job: LocalTranscriptionJob?, summaryConfiguration: OptionalLLMConfiguration?) async {
+        guard let job, !isProcessingQueue else { return }
+        isProcessingQueue = true
+        defer { isProcessingQueue = false; transcribingID = nil }
+
+        while let next = recordings.first(where: { $0.processingState == .captured && $0.mediaRelativePath != nil }) {
+            transcribingID = next.id
+            await transcribe(next, job: job)
+            if let summaryConfiguration, let updated = recordings.first(where: { $0.id == next.id }), updated.processingState == .ready {
+                await generateSummary(updated, configuration: summaryConfiguration)
+            }
         }
     }
 
