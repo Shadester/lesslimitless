@@ -52,6 +52,8 @@ public final class PendantClient: NSObject, ObservableObject {
     private var dataNotificationsReady = false
     private var bootstrapSent = false
     private var bootstrapWriteSucceeded = false
+    private var bootstrapEncryptionRetryCount = 0
+    private static let maximumBootstrapEncryptionRetries = 3
     private var outboundQueue: [Data] = []
     private var writeInFlight = false
     private var messageIndex: UInt32 = 0
@@ -98,6 +100,7 @@ public final class PendantClient: NSObject, ObservableObject {
     }
 
     public func connect(to identifier: UUID) {
+        bootstrapEncryptionRetryCount = 0
         guard state == .scanning || state == .disconnected else {
             lastEvent = "A pendant connection is already in progress"
             return
@@ -503,6 +506,20 @@ extension PendantClient: CBPeripheralDelegate {
             self.writeInFlight = false
             if let error {
                 self.outboundQueue = []
+                // macOS returns insufficientEncryption or insufficientAuthentication
+                // on the first bootstrap writes while it silently negotiates bonding;
+                // retry until bonding lands instead of treating the OS's own pairing
+                // handshake as a failure.
+                let bondingHandshakeCodes: Set<CBATTError.Code> = [.insufficientEncryption, .insufficientAuthentication]
+                if self.bootstrapSent, !self.bootstrapWriteSucceeded,
+                   let attCode = (error as? CBATTError)?.code, bondingHandshakeCodes.contains(attCode),
+                   self.bootstrapEncryptionRetryCount < Self.maximumBootstrapEncryptionRetries {
+                    self.bootstrapEncryptionRetryCount += 1
+                    self.bootstrapSent = false
+                    self.lastEvent = "Waiting for pendant pairing to complete"
+                    self.triggerPairingIfPossible()
+                    return
+                }
                 self.failConnection("Pendant write failed: \(error.localizedDescription)")
                 return
             }
