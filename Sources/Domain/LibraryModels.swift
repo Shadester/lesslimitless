@@ -70,6 +70,13 @@ public struct LibraryRecording: Identifiable, Codable, Hashable, Sendable {
         self.transcriptSegments = transcriptSegments
         self.generatedArtifacts = generatedArtifacts
     }
+
+    /// Span from first to last recorded page timestamp; an approximation of audio
+    /// length, not a decode of the underlying media file.
+    public var duration: TimeInterval? {
+        guard let endedAt else { return nil }
+        return max(0, endedAt.timeIntervalSince(startedAt))
+    }
 }
 
 public enum LibrarySearchField: String, Codable, CaseIterable, Hashable, Sendable {

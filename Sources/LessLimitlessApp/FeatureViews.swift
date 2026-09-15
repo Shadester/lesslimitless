@@ -14,30 +14,32 @@ struct LibraryView: View {
     }
 
     var body: some View {
-        List {
-            Section("Local recordings") {
-                ForEach(recordings) { recording in
-                    NavigationLink { LibraryDetailView(recording: recording) } label: {
-                        LibraryRecordingRow(recording: recording)
+        NavigationStack {
+            List {
+                Section("Local recordings") {
+                    ForEach(recordings) { recording in
+                        NavigationLink { LibraryDetailView(recording: recording) } label: {
+                            LibraryRecordingRow(recording: recording)
+                        }
                     }
                 }
             }
-        }
-        .overlay {
-            if recordings.isEmpty {
-                ContentUnavailableView(
-                    query.isEmpty ? "No local recordings" : "No matching recordings",
-                    systemImage: query.isEmpty ? "waveform" : "magnifyingglass",
-                    description: Text(library.errorMessage ?? "Record Mac audio or sync a pendant to build your local library.")
-                )
+            .overlay {
+                if recordings.isEmpty {
+                    ContentUnavailableView(
+                        query.isEmpty ? "No local recordings" : "No matching recordings",
+                        systemImage: query.isEmpty ? "waveform" : "magnifyingglass",
+                        description: Text(library.errorMessage ?? "Record Mac audio or sync a pendant to build your local library.")
+                    )
+                }
             }
-        }
-        .searchable(text: $query, prompt: "Search transcript, notes, tags, and summaries")
-        .onChange(of: query) { _, value in Task { await library.search(value) } }
-        .task { await library.reload() }
-        .navigationTitle("Library")
-        .toolbar {
-            ToolbarItem { Button("Refresh", systemImage: "arrow.clockwise") { Task { await library.reload() } } }
+            .searchable(text: $query, prompt: "Search transcript, notes, tags, and summaries")
+            .onChange(of: query) { _, value in Task { await library.search(value) } }
+            .task { await library.reload() }
+            .navigationTitle("Library")
+            .toolbar {
+                ToolbarItem { Button("Refresh", systemImage: "arrow.clockwise") { Task { await library.reload() } } }
+            }
         }
     }
 }
@@ -53,6 +55,9 @@ private struct LibraryRecordingRow: View {
                 Text(recording.source.displayName).font(.subheadline).foregroundStyle(.secondary)
                 HStack(spacing: 6) {
                     Text(recording.startedAt, style: .relative)
+                    if let duration = recording.duration {
+                        Text(duration.formattedDuration)
+                    }
                     Text(recording.processingState.rawValue.capitalized)
                     ForEach(recording.tags, id: \.self) { Text($0).padding(.horizontal, 5).background(.quaternary, in: Capsule()) }
                 }.font(.caption).foregroundStyle(.secondary)
@@ -228,6 +233,9 @@ private struct LevelRow: View {
 
 struct PendantView: View {
     @EnvironmentObject private var client: PendantClient
+    @EnvironmentObject private var library: LibraryController
+    @State private var isSyncingToLibrary = false
+    @State private var syncStatusText: String?
 
     var body: some View {
         ScrollView {
@@ -243,6 +251,9 @@ struct PendantView: View {
                         DetailLine(label: "Connection", value: stateLabel)
                         DetailLine(label: "Battery", value: client.batteryPercent.map { "\($0)%" } ?? "—")
                         DetailLine(label: "Durably stored pages", value: "\(client.storedPageCount)")
+                        if client.state == .ready {
+                            DetailLine(label: "Sync status", value: client.isSyncIdle ? "Looks complete (no new pages recently)" : "Receiving pages…")
+                        }
                         Divider()
                         Label("Read-only sync never acknowledges or erases pendant pages.", systemImage: "externaldrive.badge.checkmark")
                             .foregroundStyle(.secondary)
@@ -277,6 +288,19 @@ struct PendantView: View {
                         Button("Enable Bluetooth") { client.enable() }.buttonStyle(.borderedProminent)
                     } else if client.state == .ready {
                         Button("Read Stored Pages") { client.requestStoredPages() }.buttonStyle(.borderedProminent)
+                        Button("Sync to Library") {
+                            isSyncingToLibrary = true
+                            syncStatusText = nil
+                            Task {
+                                let imported = await library.syncPendant(deviceName: client.connectedName ?? "Pendant")
+                                if let error = library.errorMessage {
+                                    syncStatusText = error
+                                } else {
+                                    syncStatusText = imported > 0 ? "Synced \(imported) new recording(s)." : "No new recordings to sync."
+                                }
+                                isSyncingToLibrary = false
+                            }
+                        }.disabled(isSyncingToLibrary)
                         Button("Refresh Status") { client.requestDeviceStatus() }
                         Button("Disconnect") { client.disconnect() }
                     } else {
@@ -284,6 +308,10 @@ struct PendantView: View {
                             .disabled(client.state == .connecting || client.state == .discoveringServices)
                         Button("Disable Bluetooth") { client.disable() }
                     }
+                }
+
+                if let syncStatusText {
+                    Text(syncStatusText).font(.caption).foregroundStyle(.secondary)
                 }
 
                 Text(client.pageVaultError ?? "Storage pages are written atomically to the local vault before any future decoding. This app still never acknowledges or erases pendant data.")
@@ -341,7 +369,7 @@ struct SettingsView: View {
             Section("Local transcription") {
                 TextField("whisper.cpp executable", text: $settings.whisperExecutablePath)
                 TextField("Model file", text: $settings.whisperModelPath)
-                Text("Choose a local whisper.cpp-compatible executable and model. Nothing is downloaded automatically.")
+                Text("A whisper.cpp executable and tiny English model ship with the app by default. Override with your own local build/model if you want a different language or accuracy tradeoff.")
                     .font(.caption).foregroundStyle(.secondary)
             }
             Section("Optional text provider") {

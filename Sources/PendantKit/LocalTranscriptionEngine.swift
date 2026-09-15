@@ -81,7 +81,14 @@ public final class LocalTranscriptionEngine {
         if !job.expectsTimestampedJSON {
             return LocalTranscriptionResult(text: String(decoding: output.stdout, as: UTF8.self), segments: [], language: nil, provenance: provenance)
         }
-        let parsed = try Self.parseTimestampedJSON(output.stdout)
+        // whisper.cpp's -oj flag writes JSON to a "<audio path>.json" sidecar file
+        // next to the input rather than printing it to stdout.
+        let sidecarURL = job.audioURL.standardizedFileURL.appendingPathExtension("json")
+        guard let sidecarData = try? Data(contentsOf: sidecarURL) else {
+            throw LocalTranscriptionError.malformedTranscript
+        }
+        try? FileManager.default.removeItem(at: sidecarURL)
+        let parsed = try Self.parseTimestampedJSON(sidecarData)
         return LocalTranscriptionResult(text: parsed.text, segments: parsed.segments, language: parsed.language, provenance: provenance)
     }
 

@@ -17,11 +17,24 @@ final class PendantSessionAssemblerTests: XCTestCase {
     func testFiveMinuteGapSplitsSessions() {
         let first = page(1, timestamp: 1_000, audio: audio(bytes: [1]))
         let second = page(2, timestamp: 301_001, audio: audio(bytes: [2]))
-        let result = PendantSessionAssembler().assemble([first, second])
+        let assembler = PendantSessionAssembler(encounterGapMilliseconds: 5 * 60 * 1_000)
+        let result = assembler.assemble([first, second])
 
         XCTAssertEqual(result.sessions.count, 2)
         XCTAssertEqual(result.sessions[0].closingBoundary, .timestampGap(previous: first.identity, next: second.identity))
         XCTAssertEqual(result.sessions[1].openingBoundary, .timestampGap(previous: first.identity, next: second.identity))
+    }
+
+    func testPagesFromDifferentSessionIDsWithinTheGapWindowMergeIntoOneEncounter() {
+        // Real firmware mints a new sessionID per voice-activity burst; grouping
+        // must not split on that alone, only on an actual timestamp gap.
+        let burstOne = page(1, sessionID: "8", timestamp: 1_000, audio: audio(bytes: [1]))
+        let burstTwo = page(1, sessionID: "154", timestamp: 5_000, audio: audio(bytes: [2]))
+        let assembler = PendantSessionAssembler(encounterGapMilliseconds: 2 * 60 * 1_000)
+        let result = assembler.assemble([burstTwo, burstOne])
+
+        XCTAssertEqual(result.sessions.count, 1)
+        XCTAssertEqual(result.sessions[0].contributions.map(\.encodedOpusBytes), [[Data([1])], [Data([2])]])
     }
 
     func testOrdersByTimestampThenSequenceAndIndex() {
@@ -33,13 +46,15 @@ final class PendantSessionAssemblerTests: XCTestCase {
         XCTAssertEqual(result.sessions[0].contributions.map(\.encodedOpusBytes), [[Data([1])], [Data([3])], [Data([9])]])
     }
 
-    func testMissingTimestampIsRetainedDiagnosedAndExplicitBoundariesStillSplit() {
+    func testMissingTimestampIsRetainedAndDiagnosedButDoesNotSplitOnStartStop() {
         let stopped = page(1, timestamp: nil, audio: audio(stop: true, bytes: [1]))
         let started = page(2, timestamp: nil, audio: audio(start: true, bytes: [2]))
         let result = PendantSessionAssembler().assemble([started, stopped])
 
-        XCTAssertEqual(result.sessions.count, 2)
-        XCTAssertEqual(result.sessions.flatMap(\.contributions).count, 2)
+        // No timestamps means no gap can ever be detected, so start/stop alone
+        // (no longer a split trigger) leaves both pages in one encounter.
+        XCTAssertEqual(result.sessions.count, 1)
+        XCTAssertEqual(result.sessions[0].contributions.count, 2)
         XCTAssertTrue(result.diagnostics.contains(.missingTimestamp(stopped.identity)))
         XCTAssertTrue(result.diagnostics.contains(.missingTimestamp(started.identity)))
     }
@@ -66,22 +81,23 @@ final class PendantSessionAssemblerTests: XCTestCase {
         XCTAssertTrue(result.diagnostics.contains(.encryptedAudioUnavailable(encrypted.identity)))
     }
 
-    func testRequiresExactlyOneOpusFramePerEncodedPacket() {
+    func testAcceptsMissingFrameCountButRejectsAnExplicitNonOneCount() {
+        // Real pendant firmware never sets numFrames/codecType on ordinary audio
+        // chunks; only an explicit, present value other than 1 is invalid.
         let missingCodec = page(1, timestamp: 1, audio: audio(codecType: nil, bytes: [1]))
         let missingFrames = page(2, timestamp: 2, audio: audio(bytes: [2], numFrames: nil))
         let zeroFrames = page(3, timestamp: 3, audio: audio(bytes: [3], numFrames: 0))
         let multipleFrames = page(4, timestamp: 4, audio: audio(bytes: [4], numFrames: 2))
         let result = PendantSessionAssembler().assemble([missingCodec, missingFrames, zeroFrames, multipleFrames])
 
-        XCTAssertEqual(result.sessions[0].contributions.map(\.encodedOpusBytes), [[Data([1])], [], [], []])
-        XCTAssertTrue(result.diagnostics.contains(.invalidOpusFrameCount(missingFrames.identity, numFrames: nil)))
+        XCTAssertEqual(result.sessions[0].contributions.map(\.encodedOpusBytes), [[Data([1])], [Data([2])], [], []])
         XCTAssertTrue(result.diagnostics.contains(.invalidOpusFrameCount(zeroFrames.identity, numFrames: 0)))
         XCTAssertTrue(result.diagnostics.contains(.invalidOpusFrameCount(multipleFrames.identity, numFrames: 2)))
     }
 
-    private func page(_ sequence: Int, index: Int = 0, timestamp: UInt64?, audio: FlashPageAudio) -> PendantSessionPage {
+    private func page(_ sequence: Int, index: Int = 0, sessionID: String = "session", timestamp: UInt64?, audio: FlashPageAudio) -> PendantSessionPage {
         PendantSessionPage(
-            identity: PendantPageIdentity(deviceID: "device", sessionID: "session", runID: "run", sequence: sequence, pageIndex: index),
+            identity: PendantPageIdentity(deviceID: "device", sessionID: sessionID, runID: "run", sequence: sequence, pageIndex: index),
             summary: FlashPageSummary(timestamp: timestamp, bootUptime: nil, chunks: [FlashPageChunk(timeOffset: nil, audioData: audio)])
         )
     }

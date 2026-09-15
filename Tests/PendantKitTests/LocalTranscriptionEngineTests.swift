@@ -7,9 +7,11 @@ final class LocalTranscriptionEngineTests: XCTestCase {
     func testWhisperCPPArgumentsAndRunnerInvocation() throws {
         let audio = try makeAudio()
         let executable = try makeExecutable()
-        defer { try? FileManager.default.removeItem(at: audio); try? FileManager.default.removeItem(at: executable) }
+        let sidecar = audio.appendingPathExtension("json")
+        try jsonSidecarData.write(to: sidecar)
+        defer { try? FileManager.default.removeItem(at: audio); try? FileManager.default.removeItem(at: executable); try? FileManager.default.removeItem(at: sidecar) }
         let job = LocalTranscriptionJob.whisperCPP(executableURL: executable, modelURL: URL(fileURLWithPath: "/tmp/model.bin"), audioURL: audio, additionalArguments: ["-l", "en"])
-        let runner = MockRunner(output: jsonOutput)
+        let runner = MockRunner(output: emptyOutput)
         _ = try LocalTranscriptionEngine(runner: runner).transcribe(job)
         XCTAssertEqual(runner.executableURL, executable)
         XCTAssertEqual(runner.arguments, ["-m", "/tmp/model.bin", "-f", audio.path, "-oj", "-l", "en"])
@@ -18,13 +20,17 @@ final class LocalTranscriptionEngineTests: XCTestCase {
     func testParsesWhisperTimestampedJSONAndProvenance() throws {
         let audio = try makeAudio()
         let executable = try makeExecutable()
-        defer { try? FileManager.default.removeItem(at: audio); try? FileManager.default.removeItem(at: executable) }
-        let runner = MockRunner(output: jsonOutput)
+        // whisper.cpp writes JSON to a "<audio path>.json" sidecar file, not stdout.
+        let sidecar = audio.appendingPathExtension("json")
+        try jsonSidecarData.write(to: sidecar)
+        defer { try? FileManager.default.removeItem(at: audio); try? FileManager.default.removeItem(at: executable); try? FileManager.default.removeItem(at: sidecar) }
+        let runner = MockRunner(output: emptyOutput)
         let result = try LocalTranscriptionEngine(runner: runner).transcribe(job(audio: audio, executable: executable))
         XCTAssertEqual(result.text, "hello world")
         XCTAssertEqual(result.language, "en")
         XCTAssertEqual(result.segments.map(\.startTime), [0, 1.5])
         XCTAssertEqual(result.segments.map(\.endTime), [1.5, 3])
+        XCTAssertFalse(FileManager.default.fileExists(atPath: sidecar.path), "sidecar JSON should be cleaned up after being read")
     }
 
     func testNonzeroTimeoutAndMalformedOutputAreReported() throws {
@@ -38,7 +44,8 @@ final class LocalTranscriptionEngineTests: XCTestCase {
         XCTAssertThrowsError(try LocalTranscriptionEngine(runner: MockRunner(error: .timedOut)).transcribe(job)) {
             XCTAssertEqual($0 as? LocalTranscriptionError, .timedOut)
         }
-        XCTAssertThrowsError(try LocalTranscriptionEngine(runner: MockRunner(output: .init(exitStatus: 0, stdout: Data("{}".utf8), stderr: Data()))).transcribe(job)) {
+        // No sidecar JSON file was ever written for this audio path.
+        XCTAssertThrowsError(try LocalTranscriptionEngine(runner: MockRunner(output: .init(exitStatus: 0, stdout: Data(), stderr: Data()))).transcribe(job)) {
             XCTAssertEqual($0 as? LocalTranscriptionError, .malformedTranscript)
         }
     }
@@ -47,7 +54,7 @@ final class LocalTranscriptionEngineTests: XCTestCase {
         let audio = try makeAudio()
         let executable = try makeExecutable()
         defer { try? FileManager.default.removeItem(at: audio); try? FileManager.default.removeItem(at: executable) }
-        let runner = MockRunner(output: jsonOutput)
+        let runner = MockRunner(output: emptyOutput)
         let remote = URL(string: "https://example.com/whisper")!
         XCTAssertThrowsError(try LocalTranscriptionEngine(runner: runner).transcribe(LocalTranscriptionJob(executableURL: remote, audioURL: audio, arguments: []))) {
             XCTAssertEqual($0 as? LocalTranscriptionError, .invalidExecutable(remote))
@@ -58,8 +65,12 @@ final class LocalTranscriptionEngineTests: XCTestCase {
         XCTAssertNil(runner.arguments)
     }
 
-    private var jsonOutput: LocalTranscriptionProcessOutput {
-        LocalTranscriptionProcessOutput(exitStatus: 0, stdout: Data("{\"result\":{\"language\":\"en\",\"segments\":[{\"t0\":0,\"t1\":150,\"text\":\"hello\"},{\"t0\":150,\"t1\":300,\"text\":\"world\"}]}}".utf8), stderr: Data())
+    private var emptyOutput: LocalTranscriptionProcessOutput {
+        LocalTranscriptionProcessOutput(exitStatus: 0, stdout: Data(), stderr: Data())
+    }
+
+    private var jsonSidecarData: Data {
+        Data("{\"result\":{\"language\":\"en\",\"segments\":[{\"t0\":0,\"t1\":150,\"text\":\"hello\"},{\"t0\":150,\"t1\":300,\"text\":\"world\"}]}}".utf8)
     }
 
     private func job(audio: URL, executable: URL) -> LocalTranscriptionJob {

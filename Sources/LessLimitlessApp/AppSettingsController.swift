@@ -23,8 +23,10 @@ final class AppSettingsController: ObservableObject {
     }
 
     init() {
-        whisperExecutablePath = defaults.string(forKey: Keys.whisperExecutable) ?? ""
-        whisperModelPath = defaults.string(forKey: Keys.whisperModel) ?? ""
+        let savedExecutable = defaults.string(forKey: Keys.whisperExecutable)
+        whisperExecutablePath = (savedExecutable?.isEmpty == false ? savedExecutable : nil) ?? Self.bundledWhisperExecutablePath ?? ""
+        let savedModel = defaults.string(forKey: Keys.whisperModel)
+        whisperModelPath = (savedModel?.isEmpty == false ? savedModel : nil) ?? Self.bundledWhisperModelPath ?? ""
         llmEndpoint = defaults.string(forKey: Keys.llmEndpoint) ?? "http://localhost:11434/v1/chat/completions"
         llmModel = defaults.string(forKey: Keys.llmModel) ?? ""
         providerKeyDraft = Keychain.value(service: Keys.service, account: Keys.providerKeyAccount) ?? ""
@@ -44,8 +46,20 @@ final class AppSettingsController: ObservableObject {
     }
 
     var transcriptionJobTemplate: LocalTranscriptionJob? {
-        guard let executable = URL(string: whisperExecutablePath), let model = URL(string: whisperModelPath) else { return nil }
+        guard !whisperExecutablePath.isEmpty, !whisperModelPath.isEmpty else { return nil }
+        let executable = URL(fileURLWithPath: whisperExecutablePath)
+        let model = URL(fileURLWithPath: whisperModelPath)
         return LocalTranscriptionJob.whisperCPP(executableURL: executable, modelURL: model, audioURL: URL(fileURLWithPath: "/placeholder.wav"))
+    }
+
+    /// The whisper.cpp CLI bundled into Contents/Resources by scripts/build-macos.sh, if present.
+    static var bundledWhisperExecutablePath: String? {
+        Bundle.main.url(forResource: "whisper-cli", withExtension: nil)?.path
+    }
+
+    /// The whisper.cpp model bundled into Contents/Resources/models by scripts/build-macos.sh, if present.
+    static var bundledWhisperModelPath: String? {
+        Bundle.main.url(forResource: "ggml-tiny.en", withExtension: "bin", subdirectory: "models")?.path
     }
 }
 private enum Keychain {

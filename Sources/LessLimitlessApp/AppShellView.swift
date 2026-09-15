@@ -18,7 +18,9 @@ struct AppShellView: View {
                     .padding()
             }
         } detail: {
-            destinationView(selection ?? .library)
+            let current = selection ?? .library
+            destinationView(current)
+                .id(current)
         }
         .navigationSplitViewStyle(.balanced)
     }

@@ -65,9 +65,18 @@ public struct PendantSessionAssembly: Equatable, Sendable {
 /// Pure assembly of parsed page summaries. It does not access storage, decode
 /// audio, communicate with a pendant, or alter raw page data.
 public struct PendantSessionAssembler: Sendable {
-    public static let timestampGapMilliseconds: UInt64 = 5 * 60 * 1_000
+    /// Default gap that closes one encounter and opens the next. The firmware mints
+    /// a new sessionID per voice-activity burst, so within a real wearing session
+    /// bursts sit a few seconds apart; 2 minutes comfortably separates that from a
+    /// genuine pause between encounters. Fitted against on-device data (largest
+    /// intra-encounter gap observed: 3.9 min), so it is a tuning knob, not a fact.
+    public static let defaultEncounterGapMilliseconds: UInt64 = 2 * 60 * 1_000
 
-    public init() {}
+    private let encounterGapMilliseconds: UInt64
+
+    public init(encounterGapMilliseconds: UInt64 = Self.defaultEncounterGapMilliseconds) {
+        self.encounterGapMilliseconds = encounterGapMilliseconds
+    }
 
     public func assemble(_ pages: [PendantSessionPage]) -> PendantSessionAssembly {
         let grouped = Dictionary(grouping: pages, by: GroupKey.init)
@@ -88,13 +97,18 @@ public struct PendantSessionAssembler: Sendable {
         }
         return PendantSessionAssembly(sessions: sessions, diagnostics: diagnostics)
     }
+
+    /// A group is one device's pages, spanning many firmware bursts. Only a
+    /// timestamp gap splits it into encounters; `didStartRecording`/`didStopRecording`
+    /// fire once per burst on real firmware and are recorded as provenance on the
+    /// opening/closing page of an encounter, never as a split trigger.
     private func assembleGroup(_ pages: [PendantSessionPage]) -> PendantSessionAssembly {
-        let useTimestamps = pages.allSatisfy { $0.summary.timestamp != nil }
-        let ordered = pages.sorted { isOrderedBefore($0, $1, useTimestamps: useTimestamps) }
+        let ordered = pages.sorted(by: isOrderedBefore)
         var sessions: [PendantSessionManifest] = []
         var diagnostics: [PendantSessionDiagnostic] = []
         var contributions: [PendantSessionPageContribution] = []
         var openingBoundary: PendantSessionBoundary?
+        var pendingClosing: PendantSessionBoundary?
         var previous: PendantSessionPage?
 
         func finish(_ closingBoundary: PendantSessionBoundary?) {
@@ -107,6 +121,7 @@ public struct PendantSessionAssembler: Sendable {
             ))
             contributions = []
             openingBoundary = nil
+            pendingClosing = nil
         }
 
         for page in ordered {
@@ -115,18 +130,16 @@ public struct PendantSessionAssembler: Sendable {
             let hasStop = audio.contains { $0.didStopRecording == true }
             if page.summary.timestamp == nil { diagnostics.append(.missingTimestamp(page.identity)) }
 
-            var boundary: PendantSessionBoundary?
-            if hasStart {
-                boundary = .recordingStarted(page.identity)
-            } else if let previous, let previousTimestamp = previous.summary.timestamp,
-                      let timestamp = page.summary.timestamp,
-                      timestamp >= previousTimestamp,
-                      timestamp - previousTimestamp >= Self.timestampGapMilliseconds {
-                boundary = .timestampGap(previous: previous.identity, next: page.identity)
-            }
-            if let boundary {
-                finish(boundary)
+            if let previous, let previousTimestamp = previous.summary.timestamp,
+               let timestamp = page.summary.timestamp,
+               timestamp >= previousTimestamp,
+               timestamp - previousTimestamp >= encounterGapMilliseconds {
+                let boundary = PendantSessionBoundary.timestampGap(previous: previous.identity, next: page.identity)
+                finish(pendingClosing ?? boundary)
                 openingBoundary = boundary
+            }
+            if contributions.isEmpty, openingBoundary == nil, hasStart {
+                openingBoundary = .recordingStarted(page.identity)
             }
 
             var opus: [Data] = []
@@ -136,7 +149,9 @@ public struct PendantSessionAssembler: Sendable {
                 } else if let codecType = item.codecType, codecType != 1 {
                     diagnostics.append(.unsupportedCodec(page.identity, codecType: codecType))
                 } else if let bytes = item.preferredEncodedAudio {
-                    guard item.numFrames == 1 else {
+                    // Real firmware leaves numFrames/codecType unset on ordinary audio
+                    // chunks; only treat an explicit non-1 value as invalid.
+                    guard item.numFrames == nil || item.numFrames == 1 else {
                         diagnostics.append(.invalidOpusFrameCount(page.identity, numFrames: item.numFrames))
                         continue
                     }
@@ -144,38 +159,35 @@ public struct PendantSessionAssembler: Sendable {
                 }
             }
             contributions.append(PendantSessionPageContribution(identity: page.identity, timestamp: page.summary.timestamp, encodedOpusBytes: opus))
-            if hasStop { finish(.recordingStopped(page.identity)) }
+            pendingClosing = hasStop ? .recordingStopped(page.identity) : pendingClosing
             previous = page
         }
-        finish(nil)
+        finish(pendingClosing)
         return PendantSessionAssembly(sessions: sessions, diagnostics: diagnostics)
     }
 
-    /// Uses timestamp order only when a whole recording group has timestamps;
-    /// otherwise sequence/index provides a total stable ordering.
-    private func isOrderedBefore(_ lhs: PendantSessionPage, _ rhs: PendantSessionPage, useTimestamps: Bool) -> Bool {
-        if useTimestamps, lhs.summary.timestamp != rhs.summary.timestamp {
-            return lhs.summary.timestamp! < rhs.summary.timestamp!
+    /// Total order across a whole encounter, which may span many bursts (and thus
+    /// many sessionIDs/sequence counters). Timestamp wins when both pages have one;
+    /// otherwise falls back to sessionID (numeric, since it restarts per burst),
+    /// then sequence, then pageIndex.
+    private func isOrderedBefore(_ lhs: PendantSessionPage, _ rhs: PendantSessionPage) -> Bool {
+        if let l = lhs.summary.timestamp, let r = rhs.summary.timestamp, l != r {
+            return l < r
         }
+        let lSessionID = lhs.identity.sessionID, rSessionID = rhs.identity.sessionID
+        if let l = Int(lSessionID), let r = Int(rSessionID), l != r { return l < r }
+        if lSessionID != rSessionID { return lSessionID < rSessionID }
         if lhs.identity.sequence != rhs.identity.sequence { return lhs.identity.sequence < rhs.identity.sequence }
         return lhs.identity.pageIndex < rhs.identity.pageIndex
     }
 
     private struct GroupKey: Hashable, Comparable {
         let deviceID: String
-        let sessionID: String
-        let runID: String
 
         init(_ page: PendantSessionPage) {
             deviceID = page.identity.deviceID
-            sessionID = page.identity.sessionID
-            runID = page.identity.runID
         }
 
-        static func < (lhs: GroupKey, rhs: GroupKey) -> Bool {
-            if lhs.deviceID != rhs.deviceID { return lhs.deviceID < rhs.deviceID }
-            if lhs.sessionID != rhs.sessionID { return lhs.sessionID < rhs.sessionID }
-            return lhs.runID < rhs.runID
-        }
+        static func < (lhs: GroupKey, rhs: GroupKey) -> Bool { lhs.deviceID < rhs.deviceID }
     }
 }

@@ -41,6 +41,68 @@ public struct PendantSkippedEmptySession: Equatable, Sendable {
     }
 }
 
+/// One encounter that could not be decoded (corrupt packet, decoder limit, etc).
+/// Reported rather than thrown so one bad encounter never blocks the rest of a sync.
+public struct PendantFailedExport: Equatable, Sendable {
+    public let manifestIndex: Int
+    public let archiveID: String
+    public let reason: String
+
+    public init(manifestIndex: Int, archiveID: String, reason: String) {
+        self.manifestIndex = manifestIndex
+        self.archiveID = archiveID
+        self.reason = reason
+    }
+}
+
+public struct PendantLibraryExportedSession: Equatable, Sendable {
+    public let manifestIndex: Int
+    public let archiveID: String
+    public let export: DecodedSessionExport
+    public let earliestTimestampMilliseconds: UInt64?
+    public let latestTimestampMilliseconds: UInt64?
+
+    public init(
+        manifestIndex: Int,
+        archiveID: String,
+        export: DecodedSessionExport,
+        earliestTimestampMilliseconds: UInt64?,
+        latestTimestampMilliseconds: UInt64?
+    ) {
+        self.manifestIndex = manifestIndex
+        self.archiveID = archiveID
+        self.export = export
+        self.earliestTimestampMilliseconds = earliestTimestampMilliseconds
+        self.latestTimestampMilliseconds = latestTimestampMilliseconds
+    }
+}
+
+/// The non-destructive result of loading a raw page vault and decoding its usable sessions to WAV.
+public struct PendantLibrarySyncReport: Equatable, Sendable {
+    public let loadedPageIdentities: [PendantPageIdentity]
+    public let failedPages: [PendantVaultSessionPageFailure]
+    public let diagnostics: [PendantSessionDiagnostic]
+    public let exportedSessions: [PendantLibraryExportedSession]
+    public let skippedEmptySessions: [PendantSkippedEmptySession]
+    public let failedExports: [PendantFailedExport]
+
+    public init(
+        loadedPageIdentities: [PendantPageIdentity],
+        failedPages: [PendantVaultSessionPageFailure],
+        diagnostics: [PendantSessionDiagnostic],
+        exportedSessions: [PendantLibraryExportedSession],
+        skippedEmptySessions: [PendantSkippedEmptySession],
+        failedExports: [PendantFailedExport] = []
+    ) {
+        self.loadedPageIdentities = loadedPageIdentities
+        self.failedPages = failedPages
+        self.diagnostics = diagnostics
+        self.exportedSessions = exportedSessions
+        self.skippedEmptySessions = skippedEmptySessions
+        self.failedExports = failedExports
+    }
+}
+
 /// The non-destructive result of loading a raw page vault and archiving its usable sessions.
 public struct PendantVaultSessionPipelineReport: Equatable, Sendable {
     public let loadedPageIdentities: [PendantPageIdentity]
@@ -90,6 +152,72 @@ public struct PendantVaultSessionPipeline {
     /// Builds archives below the caller-owned root. Failed ledger records are reported and excluded;
     /// received and verified records are both eligible after their raw hash is revalidated.
     public func archive(to archiveRootURL: URL) throws -> PendantVaultSessionPipelineReport {
+        let loaded = loadAndAssemble()
+        let archiver = try PendantSessionArchiver(rootURL: archiveRootURL)
+        var archived: [PendantArchivedSession] = []
+        var skipped: [PendantSkippedEmptySession] = []
+        for session in loaded.assembly.sessions {
+            let archiveID = try Self.archiveID(for: session, ledger: ledger)
+            do {
+                let archive = try archiver.archive(session, sessionID: archiveID)
+                archived.append(PendantArchivedSession(manifestIndex: session.index, archiveID: archiveID, archive: archive))
+            } catch PendantSessionArchiveError.emptyEligibleOpus {
+                skipped.append(PendantSkippedEmptySession(manifestIndex: session.index, archiveID: archiveID))
+            }
+        }
+        return PendantVaultSessionPipelineReport(
+            loadedPageIdentities: loaded.pages.map(\.identity),
+            failedPages: loaded.failures,
+            diagnostics: loaded.assembly.diagnostics,
+            archivedSessions: archived,
+            skippedEmptySessions: skipped
+        )
+    }
+
+    /// Decodes archives below the caller-owned root into playable WAV sessions, ready for library import.
+    public func exportToLibrary(wavRootURL: URL) throws -> PendantLibrarySyncReport {
+        let loaded = loadAndAssemble()
+        let exporter = try DecodedSessionExporter(rootURL: wavRootURL)
+        var exported: [PendantLibraryExportedSession] = []
+        var skipped: [PendantSkippedEmptySession] = []
+        var failed: [PendantFailedExport] = []
+        for session in loaded.assembly.sessions {
+            let archiveID = try Self.archiveID(for: session, ledger: ledger)
+            do {
+                let export = try exporter.export(session, sessionID: archiveID)
+                let timestamps = session.contributions.compactMap(\.timestamp)
+                exported.append(PendantLibraryExportedSession(
+                    manifestIndex: session.index,
+                    archiveID: archiveID,
+                    export: export,
+                    earliestTimestampMilliseconds: timestamps.min(),
+                    latestTimestampMilliseconds: timestamps.max()
+                ))
+            } catch DecodedSessionExporterError.noPackets {
+                skipped.append(PendantSkippedEmptySession(manifestIndex: session.index, archiveID: archiveID))
+            } catch {
+                // One encounter failing to decode (corrupt packet, decoder limit) must
+                // not block every other encounter in the sync.
+                failed.append(PendantFailedExport(manifestIndex: session.index, archiveID: archiveID, reason: String(describing: error)))
+            }
+        }
+        return PendantLibrarySyncReport(
+            loadedPageIdentities: loaded.pages.map(\.identity),
+            failedPages: loaded.failures,
+            diagnostics: loaded.assembly.diagnostics,
+            exportedSessions: exported,
+            skippedEmptySessions: skipped,
+            failedExports: failed
+        )
+    }
+
+    private struct LoadedPages {
+        let pages: [PendantSessionPage]
+        let failures: [PendantVaultSessionPageFailure]
+        let assembly: PendantSessionAssembly
+    }
+
+    private func loadAndAssemble() -> LoadedPages {
         var loaded: [PendantSessionPage] = []
         var failures: [PendantVaultSessionPageFailure] = []
 
@@ -133,25 +261,7 @@ public struct PendantVaultSessionPipeline {
         }
 
         let assembly = PendantSessionAssembler().assemble(loaded)
-        let archiver = try PendantSessionArchiver(rootURL: archiveRootURL)
-        var archived: [PendantArchivedSession] = []
-        var skipped: [PendantSkippedEmptySession] = []
-        for session in assembly.sessions {
-            let archiveID = try Self.archiveID(for: session, ledger: ledger)
-            do {
-                let archive = try archiver.archive(session, sessionID: archiveID)
-                archived.append(PendantArchivedSession(manifestIndex: session.index, archiveID: archiveID, archive: archive))
-            } catch PendantSessionArchiveError.emptyEligibleOpus {
-                skipped.append(PendantSkippedEmptySession(manifestIndex: session.index, archiveID: archiveID))
-            }
-        }
-        return PendantVaultSessionPipelineReport(
-            loadedPageIdentities: loaded.map(\.identity),
-            failedPages: failures,
-            diagnostics: assembly.diagnostics,
-            archivedSessions: archived,
-            skippedEmptySessions: skipped
-        )
+        return LoadedPages(pages: loaded, failures: failures, assembly: assembly)
     }
 
     /// A safe archive name derived from every source page identity and raw hash.

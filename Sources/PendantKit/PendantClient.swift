@@ -37,6 +37,9 @@ public final class PendantClient: NSObject, ObservableObject {
     @Published public private(set) var lastPayloadByteCount: Int?
     @Published public private(set) var storedPageCount = 0
     @Published public private(set) var pageVaultError: String?
+    /// True once no new page has arrived for `idleThreshold`, suggesting the pendant has
+    /// finished streaming its stored backlog. The device sends no explicit "done" signal.
+    @Published public private(set) var isSyncIdle = false
 
     public var onPayload: ((Data) -> Void)?
 
@@ -58,6 +61,8 @@ public final class PendantClient: NSObject, ObservableObject {
     private var writeInFlight = false
     private var messageIndex: UInt32 = 0
     private var pageIngestor: PendantPageIngestor?
+    private var idleDetectionTask: Task<Void, Never>?
+    private static let idleThreshold: TimeInterval = 3
     private var enabled = false
 
     public init(defaults: UserDefaults = .standard) {
@@ -123,6 +128,20 @@ public final class PendantClient: NSObject, ObservableObject {
     public func disconnect() {
         guard let connectedPeripheral else { return }
         central?.cancelPeripheralConnection(connectedPeripheral)
+        idleDetectionTask?.cancel()
+        idleDetectionTask = nil
+        isSyncIdle = false
+    }
+
+    /// Resets the idle countdown; call whenever a page arrives or a sync begins.
+    private func restartIdleDetection() {
+        isSyncIdle = false
+        idleDetectionTask?.cancel()
+        idleDetectionTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: UInt64(Self.idleThreshold * 1_000_000_000))
+            guard !Task.isCancelled else { return }
+            self?.isSyncIdle = true
+        }
     }
 
     public func forgetPendant() {
@@ -221,6 +240,7 @@ public final class PendantClient: NSObject, ObservableObject {
         state = .ready
         lastEvent = "Pendant is ready"
         defaults.set(connectedPeripheral?.identifier.uuidString, forKey: Self.rememberedPeripheralKey)
+        restartIdleDetection()
         requestDeviceInfo()
         requestDeviceStatus()
     }
@@ -274,6 +294,9 @@ public final class PendantClient: NSObject, ObservableObject {
         connectedName = nil
         batteryPercent = nil
         lastPayloadByteCount = nil
+        idleDetectionTask?.cancel()
+        idleDetectionTask = nil
+        isSyncIdle = false
         // Replacing the actor prevents fragments from separate connections
         // sharing an index from entering the same assembly state.
         reassembler = FragmentReassembler()
@@ -475,6 +498,7 @@ extension PendantClient: CBPeripheralDelegate {
                 guard let payload = try await currentReassembler.receive(fragment) else { return }
                 guard self.isCurrent(peripheral), self.reassembler === currentReassembler else { return }
                 self.lastPayloadByteCount = payload.count
+                self.restartIdleDetection()
                 do {
                     if let ingestor = self.pageIngestor,
                        let ingestion = try await ingestor.ingest(payload, deviceID: peripheral.identifier.uuidString) {

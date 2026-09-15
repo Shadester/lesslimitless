@@ -12,7 +12,11 @@ public enum OpusDecoder {
     public static let maximumPacketBytes = 1_275
     public static let maximumFrameSamples = 1_920
     public static let defaultMaximumInputBytes = 8 * 1_024 * 1_024
-    public static let defaultMaximumOutputSamples = 16_000 * 60 * 30
+    // ponytail: 4h flat cap on decoded PCM per encounter (~1.7 GB of Float samples
+    // worst case); bursts now merge into whole encounters (PendantSessionAssembler),
+    // so this must exceed a full wearing session, not one burst. Raise further if a
+    // real encounter is legitimately longer than 4h.
+    public static let defaultMaximumOutputSamples = 16_000 * 60 * 60 * 4
 
     public enum Error: Swift.Error, Equatable, Sendable {
         case inputTooLarge(limit: Int)

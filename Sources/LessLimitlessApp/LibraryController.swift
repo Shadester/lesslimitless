@@ -60,6 +60,57 @@ final class LibraryController: ObservableObject {
         return try? await store.mediaURL(for: recording)
     }
 
+    /// Decodes any pendant pages sitting in the raw vault into playable WAV sessions
+    /// and registers ones not already in the library. Safe to call repeatedly:
+    /// sessions already present (matched by their derived archive path) are skipped.
+    @discardableResult
+    func syncPendant(deviceName: String) async -> Int {
+        guard let store else { return 0 }
+        let vaultRootURL = rootURL.appendingPathComponent("RawPageVault", isDirectory: true)
+        let wavRootURL = rootURL.appendingPathComponent("PendantAudio", isDirectory: true)
+        let report: PendantLibrarySyncReport
+        do {
+            report = try await Task.detached(priority: .utility) {
+                let pipeline = try PendantVaultSessionPipeline(vaultRootURL: vaultRootURL)
+                return try pipeline.exportToLibrary(wavRootURL: wavRootURL)
+            }.value
+        } catch {
+            errorMessage = "Could not sync pendant pages to the library"
+            return 0
+        }
+
+        let existingPaths = Set(recordings.compactMap(\.mediaRelativePath))
+        var importedCount = 0
+        for session in report.exportedSessions {
+            let relative = "PendantAudio/\(session.archiveID).wav.export/audio.wav"
+            guard !existingPaths.contains(relative) else { continue }
+            let started = session.earliestTimestampMilliseconds.flatMap { Self.plausibleDate(fromMilliseconds: $0) } ?? Date()
+            let ended = session.latestTimestampMilliseconds.flatMap { Self.plausibleDate(fromMilliseconds: $0) }
+            let recording = LibraryRecording(
+                title: "Pendant recording",
+                source: .pendant(deviceName: deviceName),
+                mediaRelativePath: relative,
+                startedAt: started,
+                endedAt: ended,
+                processingState: .captured,
+                tags: ["Pendant"]
+            )
+            do {
+                try await store.create(recording)
+                importedCount += 1
+            } catch {
+                errorMessage = "Could not register a pendant recording in the library"
+            }
+        }
+        // One encounter failing to decode must not hide that the rest of the sync
+        // succeeded, but it also must not be silently dropped.
+        if !report.failedExports.isEmpty {
+            errorMessage = "\(report.failedExports.count) pendant recording(s) could not be decoded and were skipped"
+        }
+        if importedCount > 0 { await reload() }
+        return importedCount
+    }
+
     func registerCapture(directory: URL, request: MacAudioCaptureRequest) async {
         guard let store else { return }
         let standardized = directory.standardizedFileURL
@@ -151,6 +202,13 @@ final class LibraryController: ObservableObject {
         } catch {
             errorMessage = "Summary generation failed"
         }
+    }
+
+    /// Pendant clocks read ~0 for pages recorded before the device was ever paired/synced.
+    /// Treat anything before 2020 as an unset clock rather than showing a decades-old date.
+    private static func plausibleDate(fromMilliseconds ms: UInt64) -> Date? {
+        let date = Date(timeIntervalSince1970: Double(ms) / 1_000)
+        return date > Date(timeIntervalSince1970: 1_577_836_800) ? date : nil
     }
 
     private func captureTitle(for request: MacAudioCaptureRequest) -> String {
