@@ -31,19 +31,30 @@ public struct LocalTranscriptionJob: Sendable, Equatable {
         executableURL: URL,
         modelURL: URL,
         audioURL: URL,
+        vadModelURL: URL? = nil,
         additionalArguments: [String] = [],
         timeout: TimeInterval = 300,
         maximumOutputBytes: Int = 1_048_576
     ) -> LocalTranscriptionJob {
-        LocalTranscriptionJob(
+        // -mc 0: don't carry previous segment's decoded text as context for the
+        // next segment. Without this, one hallucinated token (e.g. a music note)
+        // self-reinforces: it primes the next segment's decode, which repeats it,
+        // which primes the next... producing long runs of one repeated token
+        // instead of transcribing real speech that follows.
+        var arguments = ["-m", modelURL.path, "-f", audioURL.path, "-oj", "-mc", "0"]
+        if let vadModelURL {
+            // Skip decoding windows VAD says aren't speech at all, rather than
+            // force a decode of ambient/near-silent audio. Without this, whisper's
+            // decoder can lock onto a plausible-sounding phrase on a quiet stretch
+            // and repeat it for the rest of that window — a different failure mode
+            // than the context-carryover loop -mc 0 fixes above, since it happens
+            // within a single segment's decode rather than across segments.
+            arguments += ["--vad", "-vm", vadModelURL.path]
+        }
+        return LocalTranscriptionJob(
             executableURL: executableURL,
             audioURL: audioURL,
-            // -mc 0: don't carry previous segment's decoded text as context for the
-            // next segment. Without this, one hallucinated token (e.g. a music note)
-            // self-reinforces: it primes the next segment's decode, which repeats it,
-            // which primes the next... producing long runs of one repeated token
-            // instead of transcribing real speech that follows.
-            arguments: ["-m", modelURL.path, "-f", audioURL.path, "-oj", "-mc", "0"] + additionalArguments,
+            arguments: arguments + additionalArguments,
             timeout: timeout,
             maximumOutputBytes: maximumOutputBytes,
             expectsTimestampedJSON: true

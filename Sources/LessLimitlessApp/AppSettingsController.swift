@@ -54,6 +54,10 @@ final class AppSettingsController: ObservableObject {
         guard !whisperExecutablePath.isEmpty, !whisperModelPath.isEmpty else { return nil }
         let executable = URL(fileURLWithPath: whisperExecutablePath)
         let model = URL(fileURLWithPath: whisperModelPath)
+        // VAD deliberately not wired in: whisper.cpp's --vad reliably segfaults on
+        // real pendant audio (upstream bug, e.g. ggml-org/whisper.cpp#3595) when a
+        // stretch has no detected speech. -mc 0 below already fixes the more common
+        // hallucination loop; re-enable vadModelURL once that's fixed upstream.
         return LocalTranscriptionJob.whisperCPP(executableURL: executable, modelURL: model, audioURL: URL(fileURLWithPath: "/placeholder.wav"))
     }
 

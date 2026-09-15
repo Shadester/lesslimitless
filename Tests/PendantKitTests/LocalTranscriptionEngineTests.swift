@@ -17,6 +17,23 @@ final class LocalTranscriptionEngineTests: XCTestCase {
         XCTAssertEqual(runner.arguments, ["-m", "/tmp/model.bin", "-f", audio.path, "-oj", "-mc", "0", "-l", "en"])
     }
 
+    func testWhisperCPPAddsVADArgumentsWhenAModelIsSupplied() throws {
+        let audio = try makeAudio()
+        let executable = try makeExecutable()
+        let sidecar = audio.appendingPathExtension("json")
+        try jsonSidecarData.write(to: sidecar)
+        defer { try? FileManager.default.removeItem(at: audio); try? FileManager.default.removeItem(at: executable); try? FileManager.default.removeItem(at: sidecar) }
+        let job = LocalTranscriptionJob.whisperCPP(
+            executableURL: executable,
+            modelURL: URL(fileURLWithPath: "/tmp/model.bin"),
+            audioURL: audio,
+            vadModelURL: URL(fileURLWithPath: "/tmp/vad.bin")
+        )
+        let runner = MockRunner(output: emptyOutput)
+        _ = try LocalTranscriptionEngine(runner: runner).transcribe(job)
+        XCTAssertEqual(runner.arguments, ["-m", "/tmp/model.bin", "-f", audio.path, "-oj", "-mc", "0", "--vad", "-vm", "/tmp/vad.bin"])
+    }
+
     func testParsesWhisperTimestampedJSONAndProvenance() throws {
         let audio = try makeAudio()
         let executable = try makeExecutable()

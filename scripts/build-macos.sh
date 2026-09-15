@@ -148,7 +148,7 @@ if (( ! SKIP_WHISPER )); then
 
   SIGN_TARGETS+=("$FRAMEWORKS/libomp.dylib" "$FRAMEWORKS/libggml-base.0.dylib" "$FRAMEWORKS/libggml.0.dylib" "$FRAMEWORKS/libwhisper.1.dylib" "$CONTENTS/Resources/whisper-cli")
 
-  # Cache the model download; huggingface.co is ~78MB and rarely changes.
+  # Cache the model downloads; huggingface.co rarely changes them.
   MODEL_CACHE="$ROOT/.build/whisper-model-cache"
   mkdir -p "$MODEL_CACHE"
   if [[ ! -s "$MODEL_CACHE/$WHISPER_MODEL_NAME" ]]; then
