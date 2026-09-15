@@ -47,6 +47,37 @@ public struct TranscriptSegment: Identifiable, Codable, Hashable, Sendable {
     public var duration: TimeInterval { endTime - startTime }
 }
 
+extension Array where Element == TranscriptSegment {
+    /// Collapses runs of `minimumRunLength`+ consecutive segments whose text is the
+    /// same (ignoring case/whitespace/trailing punctuation) into a single segment
+    /// spanning the run. whisper.cpp occasionally locks onto one phrase and repeats
+    /// it verbatim for dozens of segments in a row (a decoder hallucination loop,
+    /// not real speech) — real repeated phrases in speech don't chain that many
+    /// times back-to-back, so a long run is a reliable signal of the bug rather
+    /// than content worth keeping duplicated.
+    public func collapsingHallucinatedRepeats(minimumRunLength: Int = 3) -> [TranscriptSegment] {
+        guard count >= minimumRunLength else { return self }
+        var result: [TranscriptSegment] = []
+        var runStart = 0
+        for i in 1...count {
+            let continuesRun = i < count && Self.normalized(self[i].text) == Self.normalized(self[runStart].text)
+            if !continuesRun {
+                if i - runStart >= minimumRunLength {
+                    result.append(TranscriptSegment(startTime: self[runStart].startTime, endTime: self[i - 1].endTime, text: self[runStart].text, speaker: self[runStart].speaker))
+                } else {
+                    result.append(contentsOf: self[runStart..<i])
+                }
+                runStart = i
+            }
+        }
+        return result
+    }
+
+    private static func normalized(_ text: String) -> String {
+        text.trimmingCharacters(in: CharacterSet(charactersIn: ".,!?").union(.whitespacesAndNewlines)).lowercased()
+    }
+}
+
 public struct Transcript: Identifiable, Codable, Hashable, Sendable {
     public let id: UUID
     public let recordingID: UUID

@@ -89,7 +89,7 @@ public final class LocalTranscriptionEngine {
         }
         try? FileManager.default.removeItem(at: sidecarURL)
         let parsed = try Self.parseTimestampedJSON(sidecarData)
-        return LocalTranscriptionResult(text: parsed.text, segments: parsed.segments, language: parsed.language, provenance: provenance)
+        return LocalTranscriptionResult(text: parsed.text, segments: parsed.segments.collapsingHallucinatedRepeats(), language: parsed.language, provenance: provenance)
     }
 
     private func validate(_ job: LocalTranscriptionJob) throws {

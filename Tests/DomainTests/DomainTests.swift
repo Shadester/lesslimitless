@@ -3,6 +3,24 @@ import XCTest
 @testable import Domain
 
 final class DomainTests: XCTestCase {
+    func testCollapsingHallucinatedRepeatsCollapsesLongRunsOnly() {
+        let looped = (0..<10).map { TranscriptSegment(startTime: TimeInterval($0) * 2, endTime: TimeInterval($0) * 2 + 2, text: "I'll take a little bit of that in a minute.") }
+        let collapsed = looped.collapsingHallucinatedRepeats()
+        XCTAssertEqual(collapsed.count, 1)
+        XCTAssertEqual(collapsed[0].startTime, 0)
+        XCTAssertEqual(collapsed[0].endTime, 20)
+        XCTAssertEqual(collapsed[0].text, looped[0].text)
+
+        // Two consecutive repeats (e.g. someone actually repeating themselves once)
+        // is under the threshold and must be left alone.
+        let notLooped = [
+            TranscriptSegment(startTime: 0, endTime: 2, text: "Okay."),
+            TranscriptSegment(startTime: 2, endTime: 4, text: "Okay."),
+            TranscriptSegment(startTime: 4, endTime: 6, text: "Let's go.")
+        ]
+        XCTAssertEqual(notLooped.collapsingHallucinatedRepeats(), notLooped)
+    }
+
     func testRecordingDurationNeverBecomesNegative() {
         let start = Date(timeIntervalSince1970: 1_000)
         let recording = Recording(
