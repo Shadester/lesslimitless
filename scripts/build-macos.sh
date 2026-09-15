@@ -16,8 +16,8 @@ MAKE_DMG=0
 NOTARIZE=0
 RUN_TESTS=0
 SKIP_WHISPER=0
-WHISPER_MODEL_URL="${WHISPER_MODEL_URL:-https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-tiny.en.bin}"
-WHISPER_MODEL_NAME="ggml-tiny.en.bin"
+WHISPER_MODEL_URL="${WHISPER_MODEL_URL:-https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.en.bin}"
+WHISPER_MODEL_NAME="ggml-base.en.bin"
 
 usage() {
   cat <<'EOF'

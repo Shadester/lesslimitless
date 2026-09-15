@@ -14,7 +14,7 @@ final class LocalTranscriptionEngineTests: XCTestCase {
         let runner = MockRunner(output: emptyOutput)
         _ = try LocalTranscriptionEngine(runner: runner).transcribe(job)
         XCTAssertEqual(runner.executableURL, executable)
-        XCTAssertEqual(runner.arguments, ["-m", "/tmp/model.bin", "-f", audio.path, "-oj", "-l", "en"])
+        XCTAssertEqual(runner.arguments, ["-m", "/tmp/model.bin", "-f", audio.path, "-oj", "-mc", "0", "-l", "en"])
     }
 
     func testParsesWhisperTimestampedJSONAndProvenance() throws {

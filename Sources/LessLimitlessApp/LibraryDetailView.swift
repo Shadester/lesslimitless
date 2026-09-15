@@ -29,6 +29,7 @@ struct LibraryDetailView: View {
         .navigationTitle(draft.title)
         .toolbar {
             ToolbarItemGroup {
+                if isWorking { ProgressView().controlSize(.small) }
                 Button("Transcribe") { transcribe() }.disabled(settings.transcriptionJobTemplate == nil || isWorking)
                 Button("Summarize") { summarize() }.disabled(settings.llmConfiguration == nil || draft.transcriptSegments.isEmpty || isWorking)
                 Button("Save") { Task { await library.save(draft) } }
@@ -131,7 +132,15 @@ struct LibraryDetailView: View {
                 Image(systemName: playback.isPlaying ? "pause.fill" : "play.fill")
             }
             .disabled(!playback.isReady)
-            if let duration = playback.duration {
+            if let duration = playback.duration, duration > 0 {
+                Slider(
+                    value: Binding(
+                        get: { playback.currentTime },
+                        set: { playback.seek(to: $0) }
+                    ),
+                    in: 0...duration
+                )
+                .disabled(!playback.isReady)
                 Text("\(playback.currentTime.formattedDuration) / \(duration.formattedDuration)")
                     .font(.caption.monospacedDigit())
                     .foregroundStyle(.secondary)

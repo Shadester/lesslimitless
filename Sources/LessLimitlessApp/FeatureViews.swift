@@ -49,23 +49,29 @@ struct LibraryView: View {
 }
 
 private struct LibraryRecordingRow: View {
+    @EnvironmentObject private var library: LibraryController
     let recording: LibraryRecording
+
+    private var isTranscribing: Bool { library.transcribingID == recording.id }
 
     var body: some View {
         HStack(spacing: 12) {
             Image(systemName: sourceSymbol).foregroundStyle(Color.accentColor).frame(width: 26)
             VStack(alignment: .leading, spacing: 4) {
-                Text(recording.title).font(.headline)
+                HStack(spacing: 6) {
+                    Text(recording.title).font(.headline)
+                    if isTranscribing { ProgressView().controlSize(.small) }
+                }
                 if let preview = recording.semanticPreview {
                     Text(preview).font(.subheadline).foregroundStyle(.primary).lineLimit(2)
                 } else {
-                    Text(recording.processingState.rawValue.capitalized)
+                    Text(statusText)
                         .font(.subheadline).foregroundStyle(.secondary)
                 }
                 HStack(spacing: 6) {
                     Text(recording.source.displayName)
                     Text("·")
-                    Text(recording.startedAt, style: .relative)
+                    Text(recording.startedAt.formatted(date: .abbreviated, time: .shortened))
                     if let duration = recording.duration {
                         Text("·")
                         Text(duration.formattedDuration)
@@ -75,6 +81,16 @@ private struct LibraryRecordingRow: View {
             }
             Spacer()
         }.padding(.vertical, 6)
+    }
+
+    /// `.ready` with no transcript segments means transcription ran and found no
+    /// speech, not that it's still in progress — show that distinctly so it doesn't
+    /// read as a stray processing-state word sitting where content would be.
+    private var statusText: String {
+        switch recording.processingState {
+        case .ready: "No speech detected"
+        default: recording.processingState.rawValue.capitalized
+        }
     }
 
     private var sourceSymbol: String {

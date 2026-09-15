@@ -94,8 +94,7 @@ final class LibraryController: ObservableObject {
                 mediaRelativePath: relative,
                 startedAt: started,
                 endedAt: ended,
-                processingState: .captured,
-                tags: ["Pendant"]
+                processingState: .captured
             )
             do {
                 try await store.create(recording)

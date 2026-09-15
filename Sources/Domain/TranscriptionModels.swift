@@ -38,7 +38,12 @@ public struct LocalTranscriptionJob: Sendable, Equatable {
         LocalTranscriptionJob(
             executableURL: executableURL,
             audioURL: audioURL,
-            arguments: ["-m", modelURL.path, "-f", audioURL.path, "-oj"] + additionalArguments,
+            // -mc 0: don't carry previous segment's decoded text as context for the
+            // next segment. Without this, one hallucinated token (e.g. a music note)
+            // self-reinforces: it primes the next segment's decode, which repeats it,
+            // which primes the next... producing long runs of one repeated token
+            // instead of transcribing real speech that follows.
+            arguments: ["-m", modelURL.path, "-f", audioURL.path, "-oj", "-mc", "0"] + additionalArguments,
             timeout: timeout,
             maximumOutputBytes: maximumOutputBytes,
             expectsTimestampedJSON: true

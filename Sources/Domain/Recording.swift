@@ -8,7 +8,7 @@ public enum RecordingSource: Codable, Hashable, Sendable {
 
     public var displayName: String {
         switch self {
-        case .pendant(let deviceName): "Pendant · \(deviceName)"
+        case .pendant(let deviceName): deviceName.isEmpty || deviceName == "Pendant" ? "Pendant" : "Pendant · \(deviceName)"
         case .macApplication(let name): "Mac · \(name)"
         case .systemAudio: "Mac · System Audio"
         case .imported: "Imported"

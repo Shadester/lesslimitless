@@ -64,7 +64,7 @@ final class AppSettingsController: ObservableObject {
 
     /// The whisper.cpp model bundled into Contents/Resources/models by scripts/build-macos.sh, if present.
     static var bundledWhisperModelPath: String? {
-        Bundle.main.url(forResource: "ggml-tiny.en", withExtension: "bin", subdirectory: "models")?.path
+        Bundle.main.url(forResource: "ggml-base.en", withExtension: "bin", subdirectory: "models")?.path
     }
 }
 private enum Keychain {
